@@ -718,9 +718,10 @@ uvsocks_read_write (UvSocks     *uvsocks,
                     UvSocksPoll *read_poll,
                     UvSocksPoll *write_poll)
 {
-  int read = 0;
-  int sent = 0;
+  int read;
+  int sent;
 
+  sent = 0;
   do
     {
       read = uvsocks_read_packet (read_poll->sock,
@@ -728,11 +729,22 @@ uvsocks_read_write (UvSocks     *uvsocks,
                                   UVSOCKS_BUF_MAX);
       if (read <= 0)
         break;
-      sent = uvsocks_write_packet (write_poll->sock,
-                                   read_poll->buf,
-                                   read);
+
+      while ( sent < read)
+        {
+          int send;
+
+          send = uvsocks_write_packet (write_poll->sock,
+                                      &read_poll->buf[sent],
+                                       read - sent);
+          if (send <= 0)
+            break;
+          sent += send;
+        }
+
       if (sent != read)
         break;
+
       return 0;
     }
   while (0);
