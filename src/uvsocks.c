@@ -772,6 +772,8 @@ uvsocks_remote_read (uv_poll_t *handle,
   UvSocksPoll *poll = handle->data;
   UvSocks *uvsocks = poll->context->uvsocks;
 
+    fprintf (stderr,
+            "uvsocks_remote_read \n");
   if (status < 0)
     {
       fprintf (stderr,
@@ -805,7 +807,8 @@ uvsocks_local_read (uv_poll_t*  handle,
 {
   UvSocksPoll *poll = handle->data;
   UvSocks *uvsocks = poll->context->uvsocks;
-
+    fprintf (stderr,
+            "uvsocks_remote_read \n");
   if (status < 0)
     {
       fprintf (stderr,
@@ -1023,21 +1026,13 @@ uvsocks_connect_remote_real (UvSocksContext   *context,
 
 static int
 uvsocks_connect_remote (UvSocksForward *forward,
-                        uv_os_sock_t    sock)
+                        UvSocksContext *context,
+                        char           *host,
+                        int             port)
 {
-  UvSocksContext *context;
-
-  context = uvsocks_create_context (forward);
-  if (!context)
-    return 1;
-
-  context->local->sock = sock;
-
-  uvsocks_add_context (forward->uvsocks, context);
-
   uvsocks_dns_resolve (forward->uvsocks,
-                       forward->uvsocks->host,
-                       g_strdup_printf("%i", context->uvsocks->port),
+                       host,
+                       g_strdup_printf("%i", port),
                        uvsocks_connect_remote_real,
                        context);
   return 0;
@@ -1050,6 +1045,7 @@ uvsocks_local_new_connection (uv_poll_t *handle,
 {
   UvSocksForward *forward = handle->data;
   UvSocksPoll *server = forward->server;
+  UvSocksContext *context;
   struct sockaddr_in addr;
   socklen_t addr_len;
   uv_os_sock_t sock;
@@ -1067,7 +1063,17 @@ uvsocks_local_new_connection (uv_poll_t *handle,
   if (uvsocks_set_nonblocking (sock))
     return;
 
-  uvsocks_connect_remote (forward, sock);
+  context = uvsocks_create_context (forward);
+  if (!context)
+    return;
+
+  context->local->sock = sock;
+  uvsocks_add_context (forward->uvsocks, context);
+
+  uvsocks_connect_remote (forward,
+                          context,
+                          forward->uvsocks->host,
+                          forward->uvsocks->port);
 }
 
 static UvSocksPoll *
@@ -1192,6 +1198,9 @@ uvsocks_reverse_forward (UvSocks *uvsocks,
                          void    *data)
 {
   UvSocksForward *forward = data;
+
+/*
+  UvSocksForward *forward = data;
   UvSocksPoll *s;
   int port;
 
@@ -1243,6 +1252,7 @@ uvsocks_reverse_forward (UvSocks *uvsocks,
                             forward->listen_host,
                             forward->listen_port,
                             forward->callback_data);
+*/
 }
 
 static void
