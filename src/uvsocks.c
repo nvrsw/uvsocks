@@ -416,6 +416,54 @@ uvsocks_remove_context (UvSocks        *uvsocks,
   g_free (context);
 }
 
+static UvSocksContext *
+uvsocks_create_context (UvSocksForward *forward)
+{
+  UvSocksContext *context;
+  UvSocksPoll *local;
+  UvSocksPoll *remote;
+
+  context = g_new0 (UvSocksContext, 1);
+  if (!context)
+    return NULL;
+  local =  malloc (sizeof (*local));
+  if (!local)
+    {
+      g_free (context);
+      return NULL;
+    }
+  local->buf = malloc (UVSOCKS_BUF_MAX);
+  local->context = context;
+#ifdef _WIN32
+  local->sock = INVALID_SOCKET;
+#else
+  local->sock = -1;
+#endif
+  local->handle.data = local;
+
+  remote =  malloc (sizeof (*remote));
+  if (!remote)
+    {
+      free (local);
+      g_free (context);
+      return NULL;
+    }
+  remote->buf = malloc (UVSOCKS_BUF_MAX);
+  remote->context = context;
+#ifdef _WIN32
+  remote->sock = INVALID_SOCKET;
+#else
+  remote->sock = -1;
+#endif
+  remote->handle.data = remote;
+
+  context->forward = forward;
+  context->local = local;
+  context->remote = remote;
+
+  return context;
+}
+
 static void
 uvsocks_free_context (UvSocks *uvsocks)
 {
@@ -945,39 +993,12 @@ uvsocks_connect_remote (UvSocksForward *forward,
                         uv_os_sock_t    local_sock)
 {
   UvSocksContext *context;
-  UvSocksPoll *local;
-  UvSocksPoll *remote;
 
-  context = g_new0 (UvSocksContext, 1);
+  context = uvsocks_create_context (forward);
   if (!context)
     return 1;
-  local =  malloc (sizeof (*local));
-  if (!local)
-    return 1;
-  local->buf = malloc (UVSOCKS_BUF_MAX);
-  local->context = context;
-  local->sock = local_sock;
-  local->handle.data = local;
 
-  remote =  malloc (sizeof (*remote));
-  if (!remote)
-    {
-      free (local);
-      g_free (context);
-      return 1;
-    }
-  remote->buf = malloc (UVSOCKS_BUF_MAX);
-  remote->context = context;
-#ifdef _WIN32
-  remote->sock = INVALID_SOCKET;
-#else
-  remote->sock = -1;
-#endif
-  remote->handle.data = remote;
-
-  context->forward = forward;
-  context->local = local;
-  context->remote = remote;
+  context->local->sock = local_sock;
 
   uvsocks_add_context (forward->uvsocks, context);
 
@@ -1138,6 +1159,11 @@ uvsocks_reverse_forward (UvSocks *uvsocks,
                          void    *data)
 {
   UvSocksForward *forward = data;
+  UvSocksContext *context;
+
+  context = uvsocks_create_context (forward);
+  if (!context)
+    return;
 
   fprintf (stderr,
           "reverse forward -> "
