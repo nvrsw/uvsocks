@@ -1125,17 +1125,17 @@ uvsocks_forward (UvSocks *uvsocks,
                                   &port);
   if (!s)
     {
-  fprintf (stderr,
-          "failed to forward -> "
-          "local:%s:%d path:%s -> server:%s:%d  -> remote:%s:%d path:%s\n",
-           forward->listen_host,
-           forward->listen_port,
-           forward->listen_path,
-           uvsocks->host,
-           uvsocks->port,
-           forward->remote_host,
-           forward->remote_port,
-           forward->remote_path);
+      fprintf (stderr,
+              "failed to forward -> "
+              "local:%s:%d path:%s -> server:%s:%d  -> remote:%s:%d path:%s\n",
+               forward->listen_host,
+               forward->listen_port,
+               forward->listen_path,
+               uvsocks->host,
+               uvsocks->port,
+               forward->remote_host,
+               forward->remote_port,
+               forward->remote_path);
 
       if (uvsocks->callback_func)
        uvsocks->callback_func (uvsocks,
