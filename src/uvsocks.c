@@ -85,6 +85,7 @@ struct _UvSocksForward
   int                remote_port;
   char              *remote_path;
 
+  UvSocksCmd         command;
   UvSocksPoll       *server;
   UvSocksForwardFunc callback_func;
   void              *callback_data;
@@ -491,15 +492,16 @@ uvsocks_add_forward (UvSocks           *uvsocks,
   if (!forward)
     return;
 
-  forward->callback_func = callback_func;
-  forward->callback_data = callback_data;
-
+  forward->command = UVSOCKS_CMD_CONNECT;
   forward->listen_host = g_strdup (listen_host);
   forward->listen_port = listen_port;
   forward->listen_path = g_strdup (listen_path);
   forward->remote_host = g_strdup (remote_host);
   forward->remote_port = remote_port;
   forward->remote_path = g_strdup (remote_path);
+
+  forward->callback_func = callback_func;
+  forward->callback_data = callback_data;
 
   fprintf (stderr,
           "Add forwarding -> "
@@ -530,15 +532,16 @@ uvsocks_add_reverse_forward (UvSocks           *uvsocks,
   if (!forward)
     return;
 
-  forward->callback_func = callback_func;
-  forward->callback_data = callback_data;
-
+  forward->command = UVSOCKS_CMD_BIND;
   forward->listen_host = g_strdup (listen_host);
   forward->listen_port = listen_port;
   forward->listen_path = g_strdup (listen_path);
   forward->remote_host = g_strdup (remote_host);
   forward->remote_port = remote_port;
   forward->remote_path = g_strdup (remote_path);
+
+  forward->callback_func = callback_func;
+  forward->callback_data = callback_data;
 
   fprintf (stderr,
           "Add reverse forwarding -> "
@@ -976,7 +979,7 @@ uvsocks_connect_remote_real (UvSocksContext   *context,
       return;
     }
 
-  if (uvsocks_remote_handshake (context, UVSOCKS_CMD_CONNECT))
+  if (uvsocks_remote_handshake (context, context->forward->command))
     {
       if (context->uvsocks->callback_func)
        context->uvsocks->callback_func (context->uvsocks,
@@ -1165,6 +1168,13 @@ uvsocks_reverse_forward (UvSocks *uvsocks,
   if (!context)
     return;
 
+  uvsocks_add_context (forward->uvsocks, context);
+
+  uvsocks_dns_resolve (forward->uvsocks,
+                       forward->uvsocks->host,
+                       g_strdup_printf("%i", context->uvsocks->port),
+                       uvsocks_connect_remote_real,
+                       context);
   fprintf (stderr,
           "reverse forward -> "
           "listen host:%s:%d path:%s connect host:%s:%d path:%s\n",
