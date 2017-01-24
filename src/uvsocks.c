@@ -1020,6 +1020,23 @@ uvsocks_connect_remote_real (UvSocksContext   *context,
                                         context->uvsocks->callback_data);
       return;
     }
+   if (context->forward->command == UVSOCKS_CMD_BIND)
+    {
+      uv_ip4_addr(context->forward->remote_host, context->forward->remote_port, &addr);
+      if (uvsocks_create_socket (&context->local->sock))
+        return;
+
+      r = connect (context->local->sock, (struct sockaddr*) &addr, sizeof (addr));
+      if (r || uvsocks_got_eagain ())
+        {
+          if (context->uvsocks->callback_func)
+            context->uvsocks->callback_func (context->uvsocks,
+                                            UVSOCKS_ERROR_CONNECT,
+                                            context->uvsocks->callback_data);
+          return;
+        }
+    }
+
  uvsocks_local_read_start (context);
  uvsocks_remote_read_start (context);
 }
@@ -1198,7 +1215,18 @@ uvsocks_reverse_forward (UvSocks *uvsocks,
                          void    *data)
 {
   UvSocksForward *forward = data;
+  UvSocksContext *context;
 
+  context = uvsocks_create_context (forward);
+  if (!context)
+    return;
+
+  uvsocks_add_context (forward->uvsocks, context);
+
+  uvsocks_connect_remote (forward,
+                          context,
+                          forward->uvsocks->host,
+                          forward->uvsocks->port);
 /*
   UvSocksForward *forward = data;
   UvSocksPoll *s;
