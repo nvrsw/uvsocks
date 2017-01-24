@@ -986,7 +986,34 @@ uvsocks_remote_handshake (UvSocksContext *context,
              (unsigned char)buffer[6],
              (unsigned char)buffer[7],
              port);
+    total = 0;
+    while (total < 10)
+      {
+        read = uvsocks_read_packet (sock, &buffer[total], 10 - total);
+        if (read <= 0)
+          return 1;
+        total += read;
+      }
+   if (context->forward->command == UVSOCKS_CMD_BIND)
+    {
+      struct sockaddr_in addr;
 
+      uv_ip4_addr(context->forward->remote_host, context->forward->remote_port, &addr);
+      if (uvsocks_create_socket (&context->local->sock))
+        return;
+
+      int r = connect (context->local->sock, (struct sockaddr*) &addr, sizeof (addr));
+      if (r || uvsocks_got_eagain ())
+        {
+          if (context->uvsocks->callback_func)
+            context->uvsocks->callback_func (context->uvsocks,
+                                            UVSOCKS_ERROR_CONNECT,
+                                            context->uvsocks->callback_data);
+          return;
+        }
+    }
+
+ uvsocks_local_read_start (context);
   return 0;
 }
 
@@ -1020,24 +1047,7 @@ uvsocks_connect_remote_real (UvSocksContext   *context,
                                         context->uvsocks->callback_data);
       return;
     }
-   if (context->forward->command == UVSOCKS_CMD_BIND)
-    {
-      uv_ip4_addr(context->forward->remote_host, context->forward->remote_port, &addr);
-      if (uvsocks_create_socket (&context->local->sock))
-        return;
 
-      r = connect (context->local->sock, (struct sockaddr*) &addr, sizeof (addr));
-      if (r || uvsocks_got_eagain ())
-        {
-          if (context->uvsocks->callback_func)
-            context->uvsocks->callback_func (context->uvsocks,
-                                            UVSOCKS_ERROR_CONNECT,
-                                            context->uvsocks->callback_data);
-          return;
-        }
-    }
-
- uvsocks_local_read_start (context);
  uvsocks_remote_read_start (context);
 }
 
