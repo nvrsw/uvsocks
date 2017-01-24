@@ -1,0 +1,14 @@
+*.aps
+*.db
+*.opendb
+*.opensdf
+*.sdf
+*.sublime-*
+*.suo
+*.user
+.tags*
+/_build
+lib/*
+src/*/*.a
+src/*/*.d
+src/*/*.o

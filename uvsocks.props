@@ -1,0 +1,43 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros">
+    <UvSocksLib>$(SolutionDir)_build\libunsocks\$(Platform)\$(Configuration)</UvSocksLib>
+    <HeedongLib>$(SolutionDir)lib\$(Platform)</HeedongLib>
+    <HeedongLibInclude>$(HeedongLib)\include</HeedongLibInclude>
+    <HeedongLibLib>$(HeedongLib)\lib</HeedongLibLib>
+    <HeedongLibBin>$(HeedongLib)\bin</HeedongLibBin>
+    <HeedongName>uvsocks</HeedongName>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(ProjectDir)\src;$(HeedongLibInclude);$(HeedongLibInclude)\edc;$(HeedongLibInclude)\gtk-3.0;$(HeedongLibInclude)\clutter-1.0;$(HeedongLibInclude)\cogl-1.0;$(HeedongLibInclude)\json-glib-1.0;$(HeedongLibInclude)\pango-1.0;$(HeedongLibInclude)\atk-1.0;$(HeedongLibInclude)\gdk-pixbuf-2.0;$(HeedongLibInclude)\glib-2.0;$(HeedongLibLib)\glib-2.0\include;$(HeedongLibInclude)\json-c-1.0\json-c;$(HeedongLibInclude)\leveldb-1.0;$(HeedongLibInclude)\libmicrohttpd-1.0\libmicrohttpd;$(HeedongLibLib)\libzip\include;$(HeedongLibInclude)\libuv-1.0\libuv;$(HeedongLibInclude)\cef;$(HeedongLibInclude)\libssh-1.0;$(HeedongLibInclude)\cairo;$(HeedongLibInclude)\libuv;$(HeedongLibInclude)\libxml2;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_WINSOCK_DEPRECATED_NO_WARNINGS;_DEBUG;PACKAGE="$(HeedongName)";G_DISABLE_DEPRECATED</PreprocessorDefinitions>
+      <DisableSpecificWarnings>4819</DisableSpecificWarnings>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>gobject-2.0.lib;glib-2.0.lib;libuv.lib;libuvsocks.lib;ws2_32.lib;psapi.lib;iphlpapi.lib;userenv.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(HeedongLibLib);$(HeedongLibBin);$(UvSocksLib)</AdditionalLibraryDirectories>
+      <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
+    </Link>
+    <PreBuildEvent>
+    </PreBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <BuildMacro Include="HeedongLib">
+      <Value>$(HeedongLib)</Value>
+    </BuildMacro>
+    <BuildMacro Include="HeedongLibInclude">
+      <Value>$(HeedongLibInclude)</Value>
+    </BuildMacro>
+    <BuildMacro Include="HeedongLibLib">
+      <Value>$(HeedongLibLib)</Value>
+    </BuildMacro>
+    <BuildMacro Include="HeedongLibBin">
+      <Value>$(HeedongLibBin)</Value>
+    </BuildMacro>
+    <BuildMacro Include="HeedongName">
+      <Value>$(HeedongName)</Value>
+    </BuildMacro>
+  </ItemGroup>
+</Project>
