@@ -990,7 +990,7 @@ uvsocks_connect_remote_real (UvSocksContext   *context,
 
 static int
 uvsocks_connect_remote (UvSocksForward *forward,
-                        uv_os_sock_t    local_sock)
+                        uv_os_sock_t    sock)
 {
   UvSocksContext *context;
 
@@ -998,7 +998,7 @@ uvsocks_connect_remote (UvSocksForward *forward,
   if (!context)
     return 1;
 
-  context->local->sock = local_sock;
+  context->local->sock = sock;
 
   uvsocks_add_context (forward->uvsocks, context);
 
