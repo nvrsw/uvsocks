@@ -661,7 +661,7 @@ uvsocks_dns_resolved (uv_getaddrinfo_t  *resolver,
     d->func (context, resolved);
 
 done:
-  uv_freeaddrinfo(resolved);
+  uv_freeaddrinfo (resolved);
   free (resolver);
   free (d);
 }
@@ -914,7 +914,7 @@ uvsocks_remote_read (uv_poll_t *handle,
             {
               poll->read += uvsocks_read_packet (poll->sock,
                                                 &poll->buf[poll->read],
-                                                2);
+                                                 2);
               if (poll->read < 2)
                 break;
               if (poll->buf[0] != 0x01 ||
@@ -966,9 +966,9 @@ uvsocks_remote_read (uv_poll_t *handle,
                   struct sockaddr_in addr;
                   int r;
 
-                  uv_ip4_addr(context->forward->remote_host,
-                              context->forward->remote_port,
-                             &addr);
+                  uv_ip4_addr (context->forward->remote_host,
+                               context->forward->remote_port,
+                              &addr);
                   if (uvsocks_create_socket (&context->local->sock))
                     break;
 
@@ -1221,7 +1221,7 @@ uvsocks_start_local_server (UvSocks    *uvsocks,
     int yes = 1;
     r = setsockopt (server->sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof (yes);
     if (r)
-    return NULL;
+      return NULL;
   }
 #endif
 
