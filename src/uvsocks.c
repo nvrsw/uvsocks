@@ -1000,7 +1000,7 @@ uvsocks_remote_handshake (UvSocksContext *context,
 
       uv_ip4_addr(context->forward->remote_host, context->forward->remote_port, &addr);
       if (uvsocks_create_socket (&context->local->sock))
-        return;
+        return 1;
 
       int r = connect (context->local->sock, (struct sockaddr*) &addr, sizeof (addr));
       if (r || uvsocks_got_eagain ())
@@ -1009,7 +1009,7 @@ uvsocks_remote_handshake (UvSocksContext *context,
             context->uvsocks->callback_func (context->uvsocks,
                                             UVSOCKS_ERROR_CONNECT,
                                             context->uvsocks->callback_data);
-          return;
+          return 1;
         }
     }
 
