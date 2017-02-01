@@ -10,7 +10,7 @@ More information about socks5 : [RFC1928](http://www.ietf.org/rfc/rfc1928.txt "R
 Usage
 ---
    uvsocks [-L local:port:remote:port]
-           [-R remote:port]
+           [-R :remote:port]
            [-l login_name]
            [-a password]
            [-p port]
@@ -22,13 +22,13 @@ Examples
 
 `uvsocks -L 127.0.0.1:1234:192.168.0.231:8000 192.168.0.15 -l user -a password -p 22`
 
-`uvsocks -R 192.168.0.231:8000 user:password@192.168.0.15:22`
+`uvsocks -R :192.168.0.231:8000 user:password@192.168.0.15:22`
 
-`uvsocks -R 192.168.0.231:8000 192.168.0.15 -l user -a password -p 22`
+`uvsocks -R :192.168.0.231:8000 192.168.0.15 -l user -a password -p 22`
 
-`uvsocks -L 127.0.0.1:1234:192.168.0.231:8000 -R 192.168.0.231:8000 user:password@192.168.0.15:22`
+`uvsocks -L 127.0.0.1:1234:192.168.0.231:8000 -R :192.168.0.231:8000 user:password@192.168.0.15:22`
 
-`uvsocks -L 127.0.0.1:1234:192.168.0.231:8000 -R 192.168.0.231:8000 192.168.0.15 -l user -a password -p 22`
+`uvsocks -L 127.0.0.1:1234:192.168.0.231:8000 -R :192.168.0.231:8000 192.168.0.15 -l user -a password -p 22`
 
 ---
 
