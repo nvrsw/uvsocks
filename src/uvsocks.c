@@ -713,7 +713,7 @@ uvsocks_dns_resolve (UvSocks              *uvsocks,
     {
       fprintf (stderr,
               "socks: failed getaddrinfo: %s\n",
-               uv_err_name(status));
+               uv_err_name (status));
       if (uvsocks->callback_func)
         uvsocks->callback_func (uvsocks,
                                 UVSOCKS_ERROR_DNS_ADDRINFO,
@@ -850,11 +850,13 @@ uvsocks_remote_read (uv_poll_t *handle,
               packet[packet_size++] = context->forward->command;
               packet[packet_size++] = 0x00;
               packet[packet_size++] = UVSOCKS_ADDR_TYPE_IPV4;
-              uv_ip4_addr(context->forward->remote_host, context->forward->remote_port, &addr);
+              uv_ip4_addr (context->forward->remote_host,
+                           context->forward->remote_port,
+                          &addr);
               //addr = (const struct sockaddr_in *)resolved->ai_addr;
               memcpy (&packet[packet_size], &addr.sin_addr.S_un.S_addr, 4);
               packet_size += 4;
-              port = htons(context->forward->remote_port);
+              port = htons (context->forward->remote_port);
               memcpy (&packet[packet_size], &port, 2);
               packet_size += 2;
               uvsocks_write_packet (poll->sock, packet, packet_size);
@@ -891,7 +893,9 @@ uvsocks_remote_read (uv_poll_t *handle,
           break;
           case UVSOCKS_STAGE_AUTHENTICATE:
             {
-              poll->read += uvsocks_read_packet (poll->sock, &poll->buf[poll->read], 2);
+              poll->read += uvsocks_read_packet (poll->sock,
+                                                &poll->buf[poll->read],
+                                                 2);
               if (poll->read < 2)
                 break;
 
@@ -908,7 +912,9 @@ uvsocks_remote_read (uv_poll_t *handle,
             break;
           case UVSOCKS_STAGE_ESTABLISH:
             {
-              poll->read += uvsocks_read_packet (poll->sock, &poll->buf[poll->read], 2);
+              poll->read += uvsocks_read_packet (poll->sock,
+                                                &poll->buf[poll->read],
+                                                2);
               if (poll->read < 2)
                 break;
               if (poll->buf[0] != 0x01 ||
@@ -924,7 +930,9 @@ uvsocks_remote_read (uv_poll_t *handle,
           case UVSOCKS_STAGE_TUNNEL:
           case UVSOCKS_STAGE_BIND:
             {
-              poll->read += uvsocks_read_packet (poll->sock, &poll->buf[poll->read], 10);
+              poll->read += uvsocks_read_packet (poll->sock,
+                                                &poll->buf[poll->read],
+                                                 10);
               if (poll->read < 10)
                 break;
               if (poll->buf[0] != UVSOCKS_VER_5 ||
@@ -962,7 +970,9 @@ uvsocks_remote_read (uv_poll_t *handle,
                   struct sockaddr_in addr;
                   int r;
 
-                  uv_ip4_addr(context->forward->remote_host, context->forward->remote_port, &addr);
+                  uv_ip4_addr(context->forward->remote_host,
+                              context->forward->remote_port,
+                             &addr);
                   if (uvsocks_create_socket (&context->local->sock))
                     break;
 
@@ -971,8 +981,8 @@ uvsocks_remote_read (uv_poll_t *handle,
                     {
                       if (context->uvsocks->callback_func)
                         context->uvsocks->callback_func (context->uvsocks,
-                                                        UVSOCKS_ERROR_CONNECT,
-                                                        context->uvsocks->callback_data);
+                                                         UVSOCKS_ERROR_CONNECT,
+                                                         context->uvsocks->callback_data);
                       break;
                     }
                 }
@@ -1320,60 +1330,6 @@ uvsocks_reverse_forward (UvSocks *uvsocks,
                           context,
                           forward->uvsocks->host,
                           forward->uvsocks->port);
-/*
-  UvSocksForward *forward = data;
-  UvSocksPoll *s;
-  int port;
-
-  port = forward->listen_port;
-  s = uvsocks_start_local_server (uvsocks,
-                                  forward->listen_host,
-                                  &port);
-  if (!s)
-    {
-      fprintf (stderr,
-              "failed to reverse forward -> "
-              "local:%s:%d path:%s -> server:%s:%d  -> remote:%s:%d path:%s\n",
-               forward->listen_host,
-               forward->listen_port,
-               forward->listen_path,
-               uvsocks->host,
-               uvsocks->port,
-               forward->remote_host,
-               forward->remote_port,
-               forward->remote_path);
-
-      if (uvsocks->callback_func)
-       uvsocks->callback_func (uvsocks,
-                               UVSOCKS_ERROR_LOCAL_SERVER,
-                               uvsocks->callback_data);
-      return;
-    }
-
-  fprintf (stderr,
-          "reverse forward -> "
-          "local:%s:%d path:%s -> server:%s:%d  -> remote:%s:%d path:%s\n",
-           forward->listen_host,
-           forward->listen_port,
-           forward->listen_path,
-           uvsocks->host,
-           uvsocks->port,
-           forward->remote_host,
-           forward->remote_port,
-           forward->remote_path);
-
-  forward->server = s;
-  forward->server->handle.data = forward;
-  forward->listen_port = port;
-
-  if (forward->callback_func)
-    forward->callback_func (uvsocks,
-                            forward->remote_host,
-                            forward->remote_port,
-                            forward->listen_host,
-                            forward->listen_port,
-                            forward->callback_data);
-*/
 }
 
 static void
