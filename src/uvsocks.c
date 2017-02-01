@@ -877,6 +877,18 @@ uvsocks_remote_read (uv_poll_t *handle,
                                                local->read);
                   local->read -= sent;
                   uv_mutex_unlock (&poll->context->mutex);
+                  if (poll->read < 0 || sent < 0)
+                    {
+                      fprintf (stderr,
+                              "uvsocks:: failed to remote send\n");
+                      if (uvsocks->callback_func)
+                        uvsocks->callback_func (uvsocks,
+                                                UVSOCKS_ERROR_POLL_REMOTE_SEND,
+                                                uvsocks->callback_data);
+
+                      uvsocks_remove_context (uvsocks, poll->context);
+                      return;
+                    }
                 }
             }
             break;
@@ -901,7 +913,16 @@ uvsocks_remote_read (uv_poll_t *handle,
 
               if (poll->buf[0] != UVSOCKS_VER_5 ||
                   poll->buf[1] != UVSOCKS_AUTH_PASSWD)
-                break;
+                {
+                  fprintf (stderr,
+                          "uvsocks:: failed to handshake request\n");
+                  if (context->uvsocks->callback_func)
+                    context->uvsocks->callback_func (context->uvsocks,
+                                                     UVSOCKS_ERROR_HANDSHAKE,
+                                                     context->uvsocks->callback_data);
+                  uvsocks_remove_context (uvsocks, poll->context);
+                  return;
+                }
 
               poll->read -= 2;
               uvsocks_remote_set_stage (context, UVSOCKS_STAGE_AUTHENTICATED);
@@ -919,7 +940,16 @@ uvsocks_remote_read (uv_poll_t *handle,
                 break;
               if (poll->buf[0] != 0x01 ||
                   poll->buf[1] != UVSOCKS_AUTH_ALLOW)
-                break;
+                {
+                  fprintf (stderr,
+                          "uvsocks:: failed to login\n");
+                  if (context->uvsocks->callback_func)
+                    context->uvsocks->callback_func (context->uvsocks,
+                                                     UVSOCKS_ERROR_AUTH,
+                                                     context->uvsocks->callback_data);
+                  uvsocks_remove_context (uvsocks, poll->context);
+                  return;
+                }
 
               poll->read -= 2;
               uvsocks_remote_set_stage (context, UVSOCKS_STAGE_ESTABLISHED);
@@ -936,8 +966,17 @@ uvsocks_remote_read (uv_poll_t *handle,
               if (poll->read < 10)
                 break;
               if (poll->buf[0] != UVSOCKS_VER_5 ||
-                  poll->buf[1] != 0)
-                break;
+                  poll->buf[1] != 0x00)
+                {
+                  fprintf (stderr,
+                          "uvsocks:: failed connection request\n");
+                  if (context->uvsocks->callback_func)
+                    context->uvsocks->callback_func (context->uvsocks,
+                                                      UVSOCKS_ERROR_CONNECT,
+                                                      context->uvsocks->callback_data);
+                  uvsocks_remove_context (uvsocks, poll->context);
+                  return;
+                }
 
               poll->read -= 10;
 
@@ -975,11 +1014,14 @@ uvsocks_remote_read (uv_poll_t *handle,
                   r = connect (context->local->sock, (struct sockaddr*) &addr, sizeof (addr));
                   if (r || uvsocks_got_eagain ())
                     {
+                      fprintf (stderr,
+                              "uvsocks:: failed to connect remote\n");
                       if (context->uvsocks->callback_func)
                         context->uvsocks->callback_func (context->uvsocks,
                                                          UVSOCKS_ERROR_CONNECT,
                                                          context->uvsocks->callback_data);
-                      break;
+                      uvsocks_remove_context (uvsocks, poll->context);
+                      return;
                     }
                 }
 
@@ -1008,6 +1050,18 @@ uvsocks_remote_read (uv_poll_t *handle,
                                           UVSOCKS_BUF_MAX - poll->read);
               poll->read += read;
               uv_mutex_unlock (&poll->context->mutex);
+              if (poll->read < 0 || read < 0)
+                {
+                  fprintf (stderr,
+                          "uvsocks:: failed to remote recv\n");
+                  if (uvsocks->callback_func)
+                    uvsocks->callback_func (uvsocks,
+                                            UVSOCKS_ERROR_POLL_REMOTE_RECV,
+                                            uvsocks->callback_data);
+
+                  uvsocks_remove_context (uvsocks, poll->context);
+                  return;
+                }
             }
             break;
         }
@@ -1067,6 +1121,18 @@ uvsocks_local_read (uv_poll_t*  handle,
                                        remote->read);
           remote->read -= sent;
           uv_mutex_unlock (&poll->context->mutex);
+          if (poll->read < 0 || sent < 0)
+            {
+              fprintf (stderr,
+                      "uvsocks:: failed to local send\n");
+              if (uvsocks->callback_func)
+                uvsocks->callback_func (uvsocks,
+                                        UVSOCKS_ERROR_POLL_LOCAL_SEND,
+                                        uvsocks->callback_data);
+
+              uvsocks_remove_context (uvsocks, poll->context);
+              return;
+            }
         }
     }
 
@@ -1080,6 +1146,18 @@ uvsocks_local_read (uv_poll_t*  handle,
                                   UVSOCKS_BUF_MAX - poll->read);
       poll->read += read;
       uv_mutex_unlock (&poll->context->mutex);
+      if (poll->read < 0 || read < 0)
+        {
+          fprintf (stderr,
+                  "uvsocks:: failed to local recv\n");
+          if (uvsocks->callback_func)
+            uvsocks->callback_func (uvsocks,
+                                    UVSOCKS_ERROR_POLL_LOCAL_RECV,
+                                    uvsocks->callback_data);
+
+          uvsocks_remove_context (uvsocks, poll->context);
+          return;
+        }
     }
 }
 
