@@ -741,7 +741,7 @@ uvsocks_read_packet (uv_os_sock_t sock,
   return recv (sock, buffer, (int) read, 0);
 }
 
-static void
+static int
 uvsocks_local_read_start (UvSocksContext *context);
 
 static void
@@ -984,7 +984,18 @@ uvsocks_remote_read (uv_poll_t *handle,
                 }
 
               uvsocks_remote_set_stage (context, UVSOCKS_STAGE_TUNNELED);
-              uvsocks_local_read_start (context);
+              if (uvsocks_local_read_start (context))
+                {
+                  fprintf (stderr,
+                          "uvsocks:: failed uvsocks_local_read_start\n");
+                  if (uvsocks->callback_func)
+                    uvsocks->callback_func (uvsocks,
+                                            UVSOCKS_ERROR_POLL_LOCAL_READ_START,
+                                            uvsocks->callback_data);
+
+                  uvsocks_remove_context (uvsocks, poll->context);
+                  return;
+                }
             }
             break;
           case UVSOCKS_STAGE_TUNNELED:
@@ -1072,7 +1083,7 @@ uvsocks_local_read (uv_poll_t*  handle,
     }
 }
 
-static void
+static int
 uvsocks_local_read_start (UvSocksContext *context)
 {
   int r;
@@ -1083,22 +1094,24 @@ uvsocks_local_read_start (UvSocksContext *context)
   if (r)
     {
       free (context->local);
-      return;
+      return 1;
     }
   r = uv_poll_start (&context->local->handle,
                       UV_READABLE | UV_WRITABLE | UV_DISCONNECT,
                       uvsocks_local_read);
+  if (r)
+    return 1;
 
-
+  return 0;
 }
 
-static void
+static int
 uvsocks_remote_read_start (UvSocksContext *context)
 {
   int r;
 
   if (uvsocks_set_nonblocking (context->remote->sock))
-    return;
+    return 1;
 
   r = uv_poll_init_socket (uv_default_loop (),
                           &context->remote->handle,
@@ -1106,13 +1119,15 @@ uvsocks_remote_read_start (UvSocksContext *context)
   if (r)
     {
       free (context->remote);
-      return;
+      return 1;
     }
   r = uv_poll_start (&context->remote->handle,
                       UV_READABLE | UV_WRITABLE | UV_DISCONNECT,
                       uvsocks_remote_read);
   if (r)
-    return;
+    return 1;
+
+  return 0;
 }
 
 static void
@@ -1130,14 +1145,28 @@ uvsocks_connect_remote_real (UvSocksContext   *context,
   r = connect (context->remote->sock, (struct sockaddr*) &addr, sizeof (addr));
   if (r || uvsocks_got_eagain ())
     {
+      fprintf (stderr,
+              "uvsocks:: failed to connect remote\n");
       if (context->uvsocks->callback_func)
        context->uvsocks->callback_func (context->uvsocks,
                                         UVSOCKS_ERROR_CONNECT,
                                         context->uvsocks->callback_data);
+      uvsocks_remove_context (context->uvsocks, context);
       return;
     }
- uvsocks_remote_set_stage (context, UVSOCKS_STAGE_CONNECTED);
- uvsocks_remote_read_start (context);
+  uvsocks_remote_set_stage (context, UVSOCKS_STAGE_CONNECTED);
+  if (uvsocks_remote_read_start (context))
+    {
+      fprintf (stderr,
+              "uvsocks:: failed uvsocks_remote_read_start\n");
+      if (context->uvsocks->callback_func)
+        context->uvsocks->callback_func (context->uvsocks,
+                                         UVSOCKS_ERROR_POLL_REMOTE_READ_START,
+                                         context->uvsocks->callback_data);
+
+      uvsocks_remove_context (context->uvsocks, context);
+      return;
+    }
 }
 
 static int
