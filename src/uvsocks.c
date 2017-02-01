@@ -342,23 +342,6 @@ uvsocks_quit (UvSocks  *uvsocks,
   uv_stop (&uvsocks->loop);
 }
 
-void
-uvsocks_free (UvSocks *uvsocks)
-{
-  uvsocks_send_async (uvsocks, uvsocks_quit, NULL, NULL);
-  uv_thread_join (&uvsocks->thread);
-  uv_close ((uv_handle_t *) &uvsocks->async, NULL);
-  uv_loop_close (&uvsocks->loop);
-
-  uvsocks_free_forward (uvsocks);
-  uvsocks_free_reverse_forward (uvsocks);
-
-  g_free (uvsocks->host);
-  g_free (uvsocks->user);
-  g_free (uvsocks->password);
-  g_free (uvsocks);
-}
-
 static void
 uvsocks_add_context (UvSocks        *uvsocks,
                      UvSocksContext *context)
@@ -500,6 +483,24 @@ uvsocks_free_context (UvSocks *uvsocks)
 
   while (uvsocks->contexts)
     uvsocks_remove_context (uvsocks, uvsocks->contexts);
+}
+
+void
+uvsocks_free (UvSocks *uvsocks)
+{
+  uvsocks_send_async (uvsocks, uvsocks_quit, NULL, NULL);
+  uv_thread_join (&uvsocks->thread);
+  uv_close ((uv_handle_t *) &uvsocks->async, NULL);
+  uv_loop_close (&uvsocks->loop);
+
+  uvsocks_free_context (uvsocks);
+  uvsocks_free_forward (uvsocks);
+  uvsocks_free_reverse_forward (uvsocks);
+
+  g_free (uvsocks->host);
+  g_free (uvsocks->user);
+  g_free (uvsocks->password);
+  g_free (uvsocks);
 }
 
 void
