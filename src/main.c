@@ -412,10 +412,10 @@ again:
                                 &remote_port,
                                 &remote_path))
 				  uvsocks_add_forward (uvsocks,
-                               listen_host ? listen_host : "",
+                               listen_host ? listen_host : "127.0.0.1",
                                listen_port,
                                listen_path ? listen_path : "",
-                               remote_host ? remote_host : "",
+                               remote_host ? remote_host : "127.0.0.1",
                                remote_port,
                                remote_path ? remote_path : "",
                                main_uvsocks_forwarded, NULL);
@@ -434,10 +434,10 @@ again:
                                 &remote_port,
                                 &remote_path))
           uvsocks_add_reverse_forward (uvsocks,
-                                       listen_host ? listen_host : "",
+                                       listen_host ? listen_host : "127.0.0.1",
                                        listen_port,
                                        listen_path ? listen_path : "",
-                                       remote_host ? remote_host : "",
+                                       remote_host ? remote_host : "127.0.0.1",
                                        remote_port,
                                        remote_path ? remote_path : "",
                                        main_uvsocks_forwarded, NULL);
