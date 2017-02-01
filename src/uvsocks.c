@@ -949,17 +949,13 @@ uvsocks_remote_read (uv_poll_t *handle,
                   memcpy (&port, &poll->buf[8], 2);
                   port = htons(port);
 
-                  fprintf (stderr,
-                          "reverse forward: v:%d a:%d %d ip:%d ip:%d.%d.%d.%d port:%d \n",
-                           poll->buf[0],
-                           poll->buf[1],
-                           poll->buf[2],
-                           poll->buf[3],
-                           (unsigned char)poll->buf[4],
-                           (unsigned char)poll->buf[5],
-                           (unsigned char)poll->buf[6],
-                           (unsigned char)poll->buf[7],
-                           port);
+                  if (context->forward->callback_func)
+                    context->forward->callback_func (uvsocks,
+                                                     context->forward->remote_host,
+                                                     context->forward->remote_port,
+                                                     uvsocks->host,
+                                                     port,
+                                                     context->forward->callback_data);
                   uvsocks_remote_set_stage (context, UVSOCKS_STAGE_BIND);
                   break;
                 }
