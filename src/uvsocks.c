@@ -532,14 +532,12 @@ uvsocks_add_forward (UvSocks           *uvsocks,
   forward->callback_data = callback_data;
 
   fprintf (stderr,
-          "Add forwarding -> "
-          "listen host:%s:%d path:%s connect host:%s:%d path:%s\n",
+          "add forward: "
+          "listen %s:%d -> %s:%d\n",
            forward->listen_host,
            forward->listen_port,
-           forward->listen_path,
            forward->remote_host,
-           forward->remote_port,
-           forward->remote_path);
+           forward->remote_port);
   uvsocks_add_forward0 (uvsocks, forward);
 }
 
@@ -572,14 +570,10 @@ uvsocks_add_reverse_forward (UvSocks           *uvsocks,
   forward->callback_data = callback_data;
 
   fprintf (stderr,
-          "Add reverse forwarding -> "
-          "listen host:%s:%d path:%s connect host:%s:%d path:%s\n",
-           forward->listen_host,
-           forward->listen_port,
-           forward->listen_path,
+          "add reverse forward: "
+          "%s:%d\n",
            forward->remote_host,
-           forward->remote_port,
-           forward->remote_path);
+           forward->remote_port);
   uvsocks_add_reverse_forward0 (uvsocks, forward);
 }
 
@@ -1374,15 +1368,13 @@ uvsocks_forward (UvSocks *uvsocks,
     {
       fprintf (stderr,
               "failed to forward -> "
-              "local:%s:%d path:%s -> server:%s:%d  -> remote:%s:%d path:%s\n",
+              "local:%s:%d -> server:%s:%d  -> remote:%s:%d\n",
                forward->listen_host,
                forward->listen_port,
-               forward->listen_path,
                uvsocks->host,
                uvsocks->port,
                forward->remote_host,
-               forward->remote_port,
-               forward->remote_path);
+               forward->remote_port);
 
       if (uvsocks->callback_func)
        uvsocks->callback_func (uvsocks,
@@ -1390,18 +1382,6 @@ uvsocks_forward (UvSocks *uvsocks,
                                uvsocks->callback_data);
       return;
     }
-
-  fprintf (stderr,
-          "forward -> "
-          "local:%s:%d path:%s -> server:%s:%d  -> remote:%s:%d path:%s\n",
-           forward->listen_host,
-           forward->listen_port,
-           forward->listen_path,
-           uvsocks->host,
-           uvsocks->port,
-           forward->remote_host,
-           forward->remote_port,
-           forward->remote_path);
 
   forward->server = s;
   forward->server->handle.data = forward;
