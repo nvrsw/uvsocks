@@ -11,7 +11,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)\src;$(HeedongLibInclude);$(HeedongLibInclude)\edc;$(HeedongLibInclude)\gtk-3.0;$(HeedongLibInclude)\clutter-1.0;$(HeedongLibInclude)\cogl-1.0;$(HeedongLibInclude)\json-glib-1.0;$(HeedongLibInclude)\pango-1.0;$(HeedongLibInclude)\atk-1.0;$(HeedongLibInclude)\gdk-pixbuf-2.0;$(HeedongLibInclude)\glib-2.0;$(HeedongLibLib)\glib-2.0\include;$(HeedongLibInclude)\json-c-1.0\json-c;$(HeedongLibInclude)\leveldb-1.0;$(HeedongLibInclude)\libmicrohttpd-1.0\libmicrohttpd;$(HeedongLibLib)\libzip\include;$(HeedongLibInclude)\libuv-1.0\libuv;$(HeedongLibInclude)\cef;$(HeedongLibInclude)\libssh-1.0;$(HeedongLibInclude)\cairo;$(HeedongLibInclude)\libuv;$(HeedongLibInclude)\libxml2;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)\src;$(HeedongLibInclude);$(HeedongLibInclude)\json-glib-1.0;$(HeedongLibInclude)\glib-2.0;$(HeedongLibLib)\glib-2.0\include;$(HeedongLibInclude)\libuv;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_WINSOCK_DEPRECATED_NO_WARNINGS;_DEBUG;PACKAGE="$(HeedongName)";G_DISABLE_DEPRECATED</PreprocessorDefinitions>
       <DisableSpecificWarnings>4819</DisableSpecificWarnings>
     </ClCompile>
