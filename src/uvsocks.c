@@ -915,7 +915,9 @@ uvsocks_remote_read (uv_poll_t *handle,
                   poll->buf[1] != UVSOCKS_AUTH_PASSWD)
                 {
                   fprintf (stderr,
-                          "failed to handshake request\n");
+                          "failed to handshake request(%d-%d)\n",
+                           poll->buf[0],
+                           poll->buf[1]);
                   if (context->uvsocks->callback_func)
                     context->uvsocks->callback_func (context->uvsocks,
                                                      UVSOCKS_ERROR_HANDSHAKE,
@@ -946,7 +948,9 @@ uvsocks_remote_read (uv_poll_t *handle,
                   poll->buf[1] != UVSOCKS_AUTH_ALLOW)
                 {
                   fprintf (stderr,
-                          "failed to login\n");
+                          "failed to login(%d-%d)\n",
+                           poll->buf[0],
+                           poll->buf[1]);
                   if (context->uvsocks->callback_func)
                     context->uvsocks->callback_func (context->uvsocks,
                                                      UVSOCKS_ERROR_AUTH,
@@ -977,7 +981,9 @@ uvsocks_remote_read (uv_poll_t *handle,
                   poll->buf[1] != 0x00)
                 {
                   fprintf (stderr,
-                          "failed connection request\n");
+                          "failed connection request(%d-%d)\n",
+                           poll->buf[0],
+                           poll->buf[1]);
                   if (context->uvsocks->callback_func)
                     context->uvsocks->callback_func (context->uvsocks,
                                                       UVSOCKS_ERROR_CONNECT,
