@@ -401,14 +401,14 @@ uvsocks_remove_context (UvSocks        *uvsocks,
   if (uv_is_active ((uv_handle_t *) &context->remote->handle))
     {
       fprintf (stderr,
-              "uvsocks:: uvsocks_destroy_poll remote\n");
+              "uvsocks_destroy_poll remote\n");
       uvsocks_destroy_poll (context->remote);
     }
 
   if (uv_is_active ((uv_handle_t *) &context->local->handle))
     {
       fprintf (stderr,
-              "uvsocks:: uvsocks_destroy_poll local\n");
+              "uvsocks_destroy_poll local\n");
       uvsocks_destroy_poll (context->local);
     }
 
@@ -754,7 +754,7 @@ uvsocks_remote_read (uv_poll_t *handle,
   if (status < 0)
     {
       fprintf (stderr,
-              "uvsocks:: failed poll remote read -> %s@%s:%d status:%d events:%d\n",
+              "failed poll remote read -> %s@%s:%d status:%d events:%d\n",
                uvsocks->user,
                uvsocks->host,
                uvsocks->port,
@@ -772,7 +772,7 @@ uvsocks_remote_read (uv_poll_t *handle,
   if (events & UV_DISCONNECT)
     {
       fprintf (stderr,
-              "uvsocks:: remote disconnected from %s@%s:%d status:%d events:%d\n",
+              "remote disconnected from %s@%s:%d status:%d events:%d\n",
                uvsocks->user,
                uvsocks->host,
                uvsocks->port,
@@ -876,7 +876,7 @@ uvsocks_remote_read (uv_poll_t *handle,
                   if (poll->read < 0 || sent < 0)
                     {
                       fprintf (stderr,
-                              "uvsocks:: failed to remote send\n");
+                              "failed to remote send\n");
                       if (uvsocks->callback_func)
                         uvsocks->callback_func (uvsocks,
                                                 UVSOCKS_ERROR_POLL_REMOTE_SEND,
@@ -915,7 +915,7 @@ uvsocks_remote_read (uv_poll_t *handle,
                   poll->buf[1] != UVSOCKS_AUTH_PASSWD)
                 {
                   fprintf (stderr,
-                          "uvsocks:: failed to handshake request\n");
+                          "failed to handshake request\n");
                   if (context->uvsocks->callback_func)
                     context->uvsocks->callback_func (context->uvsocks,
                                                      UVSOCKS_ERROR_HANDSHAKE,
@@ -946,7 +946,7 @@ uvsocks_remote_read (uv_poll_t *handle,
                   poll->buf[1] != UVSOCKS_AUTH_ALLOW)
                 {
                   fprintf (stderr,
-                          "uvsocks:: failed to login\n");
+                          "failed to login\n");
                   if (context->uvsocks->callback_func)
                     context->uvsocks->callback_func (context->uvsocks,
                                                      UVSOCKS_ERROR_AUTH,
@@ -977,7 +977,7 @@ uvsocks_remote_read (uv_poll_t *handle,
                   poll->buf[1] != 0x00)
                 {
                   fprintf (stderr,
-                          "uvsocks:: failed connection request\n");
+                          "failed connection request\n");
                   if (context->uvsocks->callback_func)
                     context->uvsocks->callback_func (context->uvsocks,
                                                       UVSOCKS_ERROR_CONNECT,
@@ -1027,7 +1027,7 @@ uvsocks_remote_read (uv_poll_t *handle,
                   if (r || uvsocks_got_eagain ())
                     {
                       fprintf (stderr,
-                              "uvsocks:: failed to connect remote\n");
+                              "failed to connect remote\n");
                       if (context->uvsocks->callback_func)
                         context->uvsocks->callback_func (context->uvsocks,
                                                          UVSOCKS_ERROR_CONNECT,
@@ -1041,7 +1041,7 @@ uvsocks_remote_read (uv_poll_t *handle,
               if (uvsocks_local_read_start (context))
                 {
                   fprintf (stderr,
-                          "uvsocks:: failed uvsocks_local_read_start\n");
+                          "failed uvsocks_local_read_start\n");
                   if (uvsocks->callback_func)
                     uvsocks->callback_func (uvsocks,
                                             UVSOCKS_ERROR_POLL_LOCAL_READ_START,
@@ -1065,7 +1065,7 @@ uvsocks_remote_read (uv_poll_t *handle,
               if (poll->read < 0 || read < 0)
                 {
                   fprintf (stderr,
-                          "uvsocks:: failed to remote recv\n");
+                          "failed to remote recv\n");
                   if (uvsocks->callback_func)
                     uvsocks->callback_func (uvsocks,
                                             UVSOCKS_ERROR_POLL_REMOTE_RECV,
@@ -1095,7 +1095,7 @@ uvsocks_local_read (uv_poll_t*  handle,
   if (status < 0 )
     {
       fprintf (stderr,
-              "uvsocks:: failed poll local read -> %s@%s:%d status:%d events:%d\n",
+              "failed poll local read -> %s@%s:%d status:%d events:%d\n",
                uvsocks->user,
                uvsocks->host,
                uvsocks->port,
@@ -1112,7 +1112,7 @@ uvsocks_local_read (uv_poll_t*  handle,
   if (events & UV_DISCONNECT)
     {
       fprintf (stderr,
-              "uvsocks:: local disconnected from %s@%s:%d status:%d events:%d\n",
+              "local disconnected from %s@%s:%d status:%d events:%d\n",
                uvsocks->user,
                uvsocks->host,
                uvsocks->port,
@@ -1142,7 +1142,7 @@ uvsocks_local_read (uv_poll_t*  handle,
           if (poll->read < 0 || sent < 0)
             {
               fprintf (stderr,
-                      "uvsocks:: failed to local send\n");
+                      "failed to local send\n");
               if (uvsocks->callback_func)
                 uvsocks->callback_func (uvsocks,
                                         UVSOCKS_ERROR_POLL_LOCAL_SEND,
@@ -1171,7 +1171,7 @@ uvsocks_local_read (uv_poll_t*  handle,
       if (poll->read < 0 || read < 0)
         {
           fprintf (stderr,
-                  "uvsocks:: failed to local recv\n");
+                  "failed to local recv\n");
           if (uvsocks->callback_func)
             uvsocks->callback_func (uvsocks,
                                     UVSOCKS_ERROR_POLL_LOCAL_RECV,
@@ -1250,7 +1250,7 @@ uvsocks_connect_remote_real (UvSocksContext   *context,
   if (r || uvsocks_got_eagain ())
     {
       fprintf (stderr,
-              "uvsocks:: failed to connect remote\n");
+              "failed to connect remote\n");
       if (context->uvsocks->callback_func)
        context->uvsocks->callback_func (context->uvsocks,
                                         UVSOCKS_ERROR_CONNECT,
@@ -1262,7 +1262,7 @@ uvsocks_connect_remote_real (UvSocksContext   *context,
   if (uvsocks_remote_read_start (context))
     {
       fprintf (stderr,
-              "uvsocks:: failed uvsocks_remote_read_start\n");
+              "failed uvsocks_remote_read_start\n");
       if (context->uvsocks->callback_func)
         context->uvsocks->callback_func (context->uvsocks,
                                          UVSOCKS_ERROR_POLL_REMOTE_READ_START,
