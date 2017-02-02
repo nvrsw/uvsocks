@@ -781,7 +781,9 @@ uvsocks_remote_read (uv_poll_t *handle,
 
       uvsocks_remove_context (uvsocks, poll->context);
       if (context->forward->command == UVSOCKS_CMD_BIND)
-        uvsocks_send_async (uvsocks, uvsocks_reverse_forward, context->forward, NULL);
+        uvsocks_send_async (uvsocks,
+                            uvsocks_reverse_forward,
+                            context->forward, NULL);
       return;
     }
 
@@ -881,6 +883,10 @@ uvsocks_remote_read (uv_poll_t *handle,
                                                 uvsocks->callback_data);
 
                       uvsocks_remove_context (uvsocks, poll->context);
+                      if (context->forward->command == UVSOCKS_CMD_BIND)
+                        uvsocks_send_async (uvsocks,
+                                            uvsocks_reverse_forward,
+                                            context->forward, NULL);
                       return;
                     }
                 }
@@ -915,6 +921,10 @@ uvsocks_remote_read (uv_poll_t *handle,
                                                      UVSOCKS_ERROR_HANDSHAKE,
                                                      context->uvsocks->callback_data);
                   uvsocks_remove_context (uvsocks, poll->context);
+                  if (context->forward->command == UVSOCKS_CMD_BIND)
+                    uvsocks_send_async (uvsocks,
+                                        uvsocks_reverse_forward,
+                                        context->forward, NULL);
                   return;
                 }
 
@@ -942,6 +952,10 @@ uvsocks_remote_read (uv_poll_t *handle,
                                                      UVSOCKS_ERROR_AUTH,
                                                      context->uvsocks->callback_data);
                   uvsocks_remove_context (uvsocks, poll->context);
+                  if (context->forward->command == UVSOCKS_CMD_BIND)
+                    uvsocks_send_async (uvsocks,
+                                        uvsocks_reverse_forward,
+                                        context->forward, NULL);
                   return;
                 }
 
@@ -969,6 +983,10 @@ uvsocks_remote_read (uv_poll_t *handle,
                                                       UVSOCKS_ERROR_CONNECT,
                                                       context->uvsocks->callback_data);
                   uvsocks_remove_context (uvsocks, poll->context);
+                  if (context->forward->command == UVSOCKS_CMD_BIND)
+                    uvsocks_send_async (uvsocks,
+                                        uvsocks_reverse_forward,
+                                        context->forward, NULL);
                   return;
                 }
 
@@ -1054,6 +1072,10 @@ uvsocks_remote_read (uv_poll_t *handle,
                                             uvsocks->callback_data);
 
                   uvsocks_remove_context (uvsocks, poll->context);
+                  if (context->forward->command == UVSOCKS_CMD_BIND)
+                    uvsocks_send_async (uvsocks,
+                                        uvsocks_reverse_forward,
+                                        context->forward, NULL);
                   return;
                 }
             }
@@ -1098,7 +1120,9 @@ uvsocks_local_read (uv_poll_t*  handle,
                events);
       uvsocks_remove_context (uvsocks, poll->context);
       if (poll->context->forward->command == UVSOCKS_CMD_BIND)
-        uvsocks_send_async (uvsocks, uvsocks_reverse_forward, poll->context->forward, NULL);
+        uvsocks_send_async (uvsocks,
+                            uvsocks_reverse_forward,
+                            poll->context->forward, NULL);
       return;
     }
 
@@ -1125,6 +1149,10 @@ uvsocks_local_read (uv_poll_t*  handle,
                                         uvsocks->callback_data);
 
               uvsocks_remove_context (uvsocks, poll->context);
+              if (poll->context->forward->command == UVSOCKS_CMD_BIND)
+                uvsocks_send_async (uvsocks,
+                                    uvsocks_reverse_forward,
+                                    poll->context->forward, NULL);
               return;
             }
         }
@@ -1150,6 +1178,10 @@ uvsocks_local_read (uv_poll_t*  handle,
                                     uvsocks->callback_data);
 
           uvsocks_remove_context (uvsocks, poll->context);
+          if (poll->context->forward->command == UVSOCKS_CMD_BIND)
+            uvsocks_send_async (uvsocks,
+                                uvsocks_reverse_forward,
+                                poll->context->forward, NULL);
           return;
         }
     }
