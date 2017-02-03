@@ -21,9 +21,15 @@
     <ClCompile Include="src\uvsocks.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\aqueue.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\uvsocks.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\aqueue.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

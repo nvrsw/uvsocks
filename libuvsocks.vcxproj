@@ -157,9 +157,11 @@
     <Text Include="README.md" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\aqueue.c" />
     <ClCompile Include="src\uvsocks.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\aqueue.h" />
     <ClInclude Include="src\uvsocks.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
