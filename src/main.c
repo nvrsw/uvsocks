@@ -50,7 +50,8 @@ void
 main_usage (void)
 {
 	fprintf (stderr,
-          "usage: uvsocks [-L address:port]\n"
+          "usage: uvsocks [-R listen:port:host:port]\n"
+          "               [-L listen:port:host:port]\n"
           "               [-l login_name]\n"
           "               [-a password]\n"
           "               [-p port]\n"
@@ -58,8 +59,8 @@ main_usage (void)
           ""
           ""
           "example:"
-          "uvsocks -L 127.0.0.1:1234:192.168.0.231:8000 user:password@192.168.0.15:22"
-          "uvsocks -L 127.0.0.1:1234:192.168.0.231:8000 192.168.0.15 -l user -a password -p 22"
+          "uvsocks -L 1234:192.168.0.231:8000 -R 5824:192.168.0.231:8000 user:password@192.168.0.15:1080"
+          "uvsocks -L 1234:192.168.0.231:8000 -R 5824:192.168.0.231:8000 192.168.0.15 -l user -a password -p 1080"
 	        );
 }
 
