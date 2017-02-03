@@ -846,13 +846,24 @@ uvsocks_remote_read (uv_poll_t *handle,
               packet[packet_size++] = context->forward->command;
               packet[packet_size++] = 0x00;
               packet[packet_size++] = UVSOCKS_ADDR_TYPE_IPV4;
-              uv_ip4_addr (context->forward->remote_host,
-                           context->forward->remote_port,
-                          &addr);
-              //addr = (const struct sockaddr_in *)resolved->ai_addr;
+
+              if (context->forward->command == UVSOCKS_CMD_CONNECT)
+                {
+                  uv_ip4_addr (context->forward->remote_host,
+                               context->forward->remote_port,
+                              &addr);
+                  port = htons (context->forward->remote_port);
+                }
+              if (context->forward->command == UVSOCKS_CMD_BIND)
+                {
+                  uv_ip4_addr (context->forward->listen_host,
+                               context->forward->listen_port,
+                              &addr);
+                  port = htons (context->forward->listen_port);
+                }
+
               memcpy (&packet[packet_size], &addr.sin_addr.S_un.S_addr, 4);
               packet_size += 4;
-              port = htons (context->forward->remote_port);
               memcpy (&packet[packet_size], &port, 2);
               packet_size += 2;
               uvsocks_write_packet (poll->sock, packet, packet_size);
