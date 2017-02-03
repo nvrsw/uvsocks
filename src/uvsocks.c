@@ -1352,11 +1352,17 @@ uvsocks_start_local_server (UvSocks    *uvsocks,
 {
   UvSocksPoll *server;
   struct sockaddr_in addr;
+  struct sockaddr_in name;
+  int namelen;
   int r;
 
   if (*port < 0 || *port > 65535)
     return NULL;
-  uv_ip4_addr (host, *port, &addr);
+  //uv_ip4_addr (host, *port, &addr);
+  memset ( &addr, 0, sizeof (addr));
+  addr.sin_family     = AF_INET;
+  addr.sin_port       = htons ( *port);
+  addr.sin_addr.s_addr = htonl ( INADDR_ANY);
 
   server = calloc (1, sizeof (*server));
   if (!server)
@@ -1386,6 +1392,10 @@ uvsocks_start_local_server (UvSocks    *uvsocks,
                           &server->handle,
                            server->sock);
   server->handle.data = server;
+
+  namelen = sizeof(name);
+  getsockname (server->sock, (struct sockaddr *)&name, &namelen);
+  *port = ntohs (name.sin_port);
 
   r = listen (server->sock, SOMAXCONN);
   if (r)
