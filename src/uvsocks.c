@@ -15,9 +15,6 @@
 #include <string.h>
 #include <limits.h>
 
-/* using edc_aqueue_try_pop, UVSOCKS_LOOP is 1, but 0 */
-#define UVSOCKS_LOOP 0
-
 #define UVSOCKS_BUF_MAX (1024 * 1024)
 
 #ifndef UV_BUF_LEN
@@ -696,11 +693,7 @@ uvsocks_dns_resolve (UvSocks              *uvsocks,
   d->func = func;
   resolver->data = d;
 
-#if UVSOCKS_LOOP
-  status = uv_getaddrinfo (&context->uvsocks->loop,
-#else
   status = uv_getaddrinfo (uv_default_loop (),
-#endif
                            resolver,
                            uvsocks_dns_resolved,
                            host,
