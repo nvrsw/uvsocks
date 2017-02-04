@@ -739,6 +739,90 @@ uvsocks_reverse_forward (UvSocks *uvsocks,
                          void    *data);
 
 static void
+uvsocks_remote_read0 (uv_poll_t*  handle,
+                      int         status,
+                      int         events)
+{
+  UvSocksPoll *poll = handle->data;
+  UvSocks *uvsocks = poll->context->uvsocks;
+  UvSocksPoll *local = poll->context->local;
+
+  if (status < 0 )
+    {
+      fprintf (stderr,
+              "failed poll local read -> %s@%s:%d status:%d events:%d\n",
+               uvsocks->user,
+               uvsocks->host,
+               uvsocks->port,
+               status,
+               events);
+      if (uvsocks->callback_func)
+        uvsocks->callback_func (uvsocks,
+                                UVSOCKS_ERROR_POLL_LOCAL_READ,
+                                uvsocks->callback_data);
+      uvsocks_remove_context (uvsocks, poll->context);
+      return;
+    }
+
+  if (events & UV_READABLE)
+    {
+      int read;
+      int sent;
+
+      uv_mutex_lock (&poll->context->mutex);
+      read = uvsocks_read_packet (poll->sock,
+                                  poll->buf,
+                                  UVSOCKS_BUF_MAX);
+      sent = uvsocks_write_packet (local->sock,
+                                   poll->buf,
+                                   read);
+      uv_mutex_unlock (&poll->context->mutex);
+    }
+}
+
+static void
+uvsocks_local_read0 (uv_poll_t*  handle,
+                     int         status,
+                     int         events)
+{
+  UvSocksPoll *poll = handle->data;
+  UvSocks *uvsocks = poll->context->uvsocks;
+  UvSocksPoll *remote = poll->context->remote;
+
+  if (status < 0 )
+    {
+      fprintf (stderr,
+              "failed poll local read -> %s@%s:%d status:%d events:%d\n",
+               uvsocks->user,
+               uvsocks->host,
+               uvsocks->port,
+               status,
+               events);
+      if (uvsocks->callback_func)
+        uvsocks->callback_func (uvsocks,
+                                UVSOCKS_ERROR_POLL_LOCAL_READ,
+                                uvsocks->callback_data);
+      uvsocks_remove_context (uvsocks, poll->context);
+      return;
+    }
+
+  if (events & UV_READABLE)
+    {
+      int read;
+      int sent;
+
+      uv_mutex_lock (&poll->context->mutex);
+      read = uvsocks_read_packet (poll->sock,
+                                  poll->buf,
+                                  UVSOCKS_BUF_MAX);
+      sent = uvsocks_write_packet (remote->sock,
+                                   poll->buf,
+                                   read);
+      uv_mutex_unlock (&poll->context->mutex);
+    }
+}
+
+static void
 uvsocks_remote_read (uv_poll_t *handle,
                      int        status,
                      int        events)
@@ -1051,6 +1135,7 @@ uvsocks_remote_read (uv_poll_t *handle,
                 }
 
               uvsocks_remote_set_stage (context, UVSOCKS_STAGE_TUNNELED);
+
               if (uvsocks_local_read_start (context))
                 {
                   fprintf (stderr,
@@ -1063,6 +1148,9 @@ uvsocks_remote_read (uv_poll_t *handle,
                   uvsocks_remove_context (uvsocks, poll->context);
                   return;
                 }
+              uv_poll_start (&context->remote->handle,
+                              UV_READABLE,
+                              uvsocks_remote_read0);
             }
             break;
           case UVSOCKS_STAGE_TUNNELED:
@@ -1095,6 +1183,7 @@ uvsocks_remote_read (uv_poll_t *handle,
             break;
         }
     }
+  //Sleep (1);
 }
 
 static void
@@ -1198,6 +1287,7 @@ uvsocks_local_read (uv_poll_t*  handle,
           return;
         }
     }
+  //Sleep (1);
 }
 
 static int
@@ -1214,8 +1304,8 @@ uvsocks_local_read_start (UvSocksContext *context)
       return 1;
     }
   r = uv_poll_start (&context->local->handle,
-                      UV_READABLE | UV_WRITABLE | UV_DISCONNECT,
-                      uvsocks_local_read);
+                      UV_READABLE,
+                      uvsocks_local_read0);
   if (r)
     return 1;
 
@@ -1351,11 +1441,7 @@ uvsocks_start_local_server (UvSocks    *uvsocks,
 
   if (*port < 0 || *port > 65535)
     return NULL;
-  //uv_ip4_addr (host, *port, &addr);
-  memset ( &addr, 0, sizeof (addr));
-  addr.sin_family     = AF_INET;
-  addr.sin_port       = htons ( *port);
-  addr.sin_addr.s_addr = htonl ( INADDR_ANY);
+  uv_ip4_addr (host, *port, &addr);
 
   server = calloc (1, sizeof (*server));
   if (!server)
