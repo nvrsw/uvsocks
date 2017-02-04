@@ -739,6 +739,17 @@ uvsocks_reverse_forward (UvSocks *uvsocks,
                          void    *data);
 
 static void
+uvsocks_sleep (int msec)
+{
+
+#ifdef _WIN32
+  Sleep (msec);
+#else
+  usleep (msec);
+#endif
+}
+
+static void
 uvsocks_remote_read0 (uv_poll_t*  handle,
                       int         status,
                       int         events)
@@ -746,6 +757,7 @@ uvsocks_remote_read0 (uv_poll_t*  handle,
   UvSocksPoll *poll = handle->data;
   UvSocks *uvsocks = poll->context->uvsocks;
   UvSocksPoll *local = poll->context->local;
+  const int VERIFY_AFTER = 1; /* ms */
 
   if (status < 0 )
     {
@@ -778,6 +790,7 @@ uvsocks_remote_read0 (uv_poll_t*  handle,
                                    read);
       uv_mutex_unlock (&poll->context->mutex);
     }
+  uvsocks_sleep (VERIFY_AFTER);
 }
 
 static void
@@ -788,6 +801,7 @@ uvsocks_local_read0 (uv_poll_t*  handle,
   UvSocksPoll *poll = handle->data;
   UvSocks *uvsocks = poll->context->uvsocks;
   UvSocksPoll *remote = poll->context->remote;
+  const int VERIFY_AFTER = 1; /* ms */
 
   if (status < 0 )
     {
@@ -820,6 +834,7 @@ uvsocks_local_read0 (uv_poll_t*  handle,
                                    read);
       uv_mutex_unlock (&poll->context->mutex);
     }
+  uvsocks_sleep (VERIFY_AFTER);
 }
 
 static void
