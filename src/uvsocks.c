@@ -741,100 +741,11 @@ uvsocks_reverse_forward (UvSocks *uvsocks,
 static void
 uvsocks_sleep (int msec)
 {
-
 #ifdef _WIN32
   Sleep (msec);
 #else
   usleep (msec);
 #endif
-}
-
-static void
-uvsocks_remote_read0 (uv_poll_t*  handle,
-                      int         status,
-                      int         events)
-{
-  UvSocksPoll *poll = handle->data;
-  UvSocks *uvsocks = poll->context->uvsocks;
-  UvSocksPoll *local = poll->context->local;
-  const int VERIFY_AFTER = 1; /* ms */
-
-  if (status < 0 )
-    {
-      fprintf (stderr,
-              "failed poll local read -> %s@%s:%d status:%d events:%d\n",
-               uvsocks->user,
-               uvsocks->host,
-               uvsocks->port,
-               status,
-               events);
-      if (uvsocks->callback_func)
-        uvsocks->callback_func (uvsocks,
-                                UVSOCKS_ERROR_POLL_LOCAL_READ,
-                                uvsocks->callback_data);
-      uvsocks_remove_context (uvsocks, poll->context);
-      return;
-    }
-
-  if (events & UV_READABLE)
-    {
-      int read;
-      int sent;
-
-      uv_mutex_lock (&poll->context->mutex);
-      read = uvsocks_read_packet (poll->sock,
-                                  poll->buf,
-                                  UVSOCKS_BUF_MAX);
-      sent = uvsocks_write_packet (local->sock,
-                                   poll->buf,
-                                   read);
-      uv_mutex_unlock (&poll->context->mutex);
-    }
-  uvsocks_sleep (VERIFY_AFTER);
-}
-
-static void
-uvsocks_local_read0 (uv_poll_t*  handle,
-                     int         status,
-                     int         events)
-{
-  UvSocksPoll *poll = handle->data;
-  UvSocks *uvsocks = poll->context->uvsocks;
-  UvSocksPoll *remote = poll->context->remote;
-  const int VERIFY_AFTER = 1; /* ms */
-
-  if (status < 0 )
-    {
-      fprintf (stderr,
-              "failed poll local read -> %s@%s:%d status:%d events:%d\n",
-               uvsocks->user,
-               uvsocks->host,
-               uvsocks->port,
-               status,
-               events);
-      if (uvsocks->callback_func)
-        uvsocks->callback_func (uvsocks,
-                                UVSOCKS_ERROR_POLL_LOCAL_READ,
-                                uvsocks->callback_data);
-      uvsocks_remove_context (uvsocks, poll->context);
-      return;
-    }
-
-  if (events & UV_READABLE)
-    {
-      int read;
-      int sent;
-
-      uv_mutex_lock (&poll->context->mutex);
-      read = uvsocks_read_packet (poll->sock,
-                                  poll->buf,
-                                  UVSOCKS_BUF_MAX);
-      sent = uvsocks_write_packet (remote->sock,
-                                   poll->buf,
-                                   read);
-      uv_mutex_unlock (&poll->context->mutex);
-    }
-  uvsocks_sleep (VERIFY_AFTER);
 }
 
 static void
@@ -1163,9 +1074,6 @@ uvsocks_remote_read (uv_poll_t *handle,
                   uvsocks_remove_context (uvsocks, poll->context);
                   return;
                 }
-              uv_poll_start (&context->remote->handle,
-                              UV_READABLE,
-                              uvsocks_remote_read0);
             }
             break;
           case UVSOCKS_STAGE_TUNNELED:
@@ -1198,7 +1106,7 @@ uvsocks_remote_read (uv_poll_t *handle,
             break;
         }
     }
-  //Sleep (1);
+  uvsocks_sleep (1);
 }
 
 static void
@@ -1302,7 +1210,7 @@ uvsocks_local_read (uv_poll_t*  handle,
           return;
         }
     }
-  //Sleep (1);
+  uvsocks_sleep (1);
 }
 
 static int
@@ -1319,8 +1227,8 @@ uvsocks_local_read_start (UvSocksContext *context)
       return 1;
     }
   r = uv_poll_start (&context->local->handle,
-                      UV_READABLE,
-                      uvsocks_local_read0);
+                      UV_READABLE | UV_WRITABLE | UV_DISCONNECT,
+                      uvsocks_local_read);
   if (r)
     return 1;
 
