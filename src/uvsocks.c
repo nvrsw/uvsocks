@@ -417,14 +417,9 @@ uvsocks_remove_context (UvSocks        *uvsocks,
   if (context == uvsocks->contexts)
     uvsocks->contexts = context->next;
 
-  fprintf (stderr,
-          "uvsocks_destroy_poll remote\n");
   uv_read_stop ((uv_stream_t *) context->remote->tcp);
   uv_close ((uv_handle_t *) context->remote->tcp, uvsocks_free_handle);
 
-
-  fprintf (stderr,
-          "uvsocks_destroy_poll local\n");
   uv_read_stop ((uv_stream_t *) context->local->tcp);
   uv_close ((uv_handle_t *) context->local->tcp, uvsocks_free_handle);
 
@@ -735,7 +730,7 @@ uvsocks_dns_resolved (uv_getaddrinfo_t  *resolver,
   if (status < 0)
     {
       fprintf (stderr,
-              "socks: failed to resolve dns name: %s\n",
+              "failed to resolve dns name: %s\n",
                uv_strerror ((int) status));
       if (context->uvsocks->callback_func)
         context->uvsocks->callback_func (context->uvsocks,
@@ -797,7 +792,7 @@ uvsocks_dns_resolve (UvSocks              *uvsocks,
   if (status)
     {
       fprintf (stderr,
-              "socks: failed getaddrinfo: %s\n",
+              "failed getaddrinfo: %s\n",
                uv_err_name (status));
       if (uvsocks->callback_func)
         uvsocks->callback_func (uvsocks,
@@ -922,7 +917,7 @@ uvsocks_remote_read (uv_stream_t    *stream,
   if (nread < 0)
     {
       fprintf (stderr,
-              "socks: failed to read remote client: %s\n",
+              "failed to read remote client: %s\n",
                uv_strerror ((int) nread));
 
       if (context->uvsocks->callback_func)
@@ -959,7 +954,7 @@ uvsocks_remote_read (uv_stream_t    *stream,
               context->remote->buf[1] != UVSOCKS_AUTH_PASSWD)
             {
               fprintf (stderr,
-                      "socks: failed to handshake\n");
+                      "failed to handshake\n");
 
               if (context->uvsocks->callback_func)
                 context->uvsocks->callback_func (context->uvsocks,
@@ -988,7 +983,7 @@ uvsocks_remote_read (uv_stream_t    *stream,
               context->remote->buf[1] != UVSOCKS_AUTH_ALLOW)
             {
               fprintf (stderr,
-                      "socks: failed to login to %s@%s:%d - SOCKS ver:%d status:%d",
+                      "failed to login to %s@%s:%d - SOCKS ver:%d status:%d",
                        context->uvsocks->user,
                        context->uvsocks->host,
                        context->uvsocks->port,
@@ -1034,7 +1029,7 @@ uvsocks_remote_read (uv_stream_t    *stream,
               context->remote->buf[1] != 0x00)
             {
               fprintf (stderr,
-                      "socks: failed to forward %s:%d -> localhost:%d - SOCKS ver:%d status:%d",
+                      "failed to forward %s:%d -> localhost:%d - SOCKS ver:%d status:%d",
                        context->forward->remote_host,
                        context->forward->remote_port,
                        context->forward->listen_port,
@@ -1101,7 +1096,7 @@ uvsocks_local_read (uv_stream_t    *stream,
   if (nread < 0)
     {
       fprintf (stderr,
-              "socks: failed to read local client: %s\n",
+              "failed to read local client: %s\n",
                uv_strerror ((int) nread));
 
       if (context->uvsocks->callback_func)
@@ -1273,7 +1268,7 @@ uvsocks_start_local_server (UvSocks    *uvsocks,
   if (r < 0)
     {
       fprintf (stderr,
-              "uvsocks: failed to bind to %s:0 - %s\n", host,
+              "failed to bind to %s:0 - %s\n", host,
                uv_strerror (r));
       goto fail;
     }
@@ -1286,7 +1281,7 @@ uvsocks_start_local_server (UvSocks    *uvsocks,
   if (r < 0)
     {
       fprintf (stderr,
-              "socks: failed to listen on %s:%d - %s\n",
+              "failed to listen on %s:%d - %s\n",
                host,
               *port,
                    uv_strerror (r));
