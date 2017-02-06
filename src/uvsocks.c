@@ -60,14 +60,11 @@ typedef enum _UvSocksCmd
 typedef enum _UvSocksStage
 {
   UVSOCKS_STAGE_NONE                = 0x00,
-  UVSOCKS_STAGE_CONNECTED           = 0x01,
+  UVSOCKS_STAGE_HANDSHAKE           = 0x01,
   UVSOCKS_STAGE_AUTHENTICATE        = 0x02,
-  UVSOCKS_STAGE_AUTHENTICATED       = 0x03,
-  UVSOCKS_STAGE_ESTABLISH           = 0x04,
-  UVSOCKS_STAGE_ESTABLISHED         = 0x05,
-  UVSOCKS_STAGE_TUNNEL              = 0x06,
-  UVSOCKS_STAGE_BIND                = 0x07,
-  UVSOCKS_STAGE_TUNNELED            = 0x08,
+  UVSOCKS_STAGE_ESTABLISH           = 0x03,
+  UVSOCKS_STAGE_BIND                = 0x04,
+  UVSOCKS_STAGE_TUNNEL              = 0x05,
 } UvSocksStage;
 
 typedef struct _UvSocksContext UvSocksContext;
@@ -76,8 +73,7 @@ typedef struct _UvSocksPoll UvSocksPoll;
 struct _UvSocksPoll
 {
   UvSocksContext     *context;
-  uv_poll_t           handle;
-  uv_os_sock_t        sock;
+  uv_tcp_t           *tcp;
   size_t              read;
   char               *buf;
 };
@@ -375,20 +371,39 @@ uvsocks_close_socket (uv_os_sock_t sock)
 }
 
 static void
-uvsocks_free_poll (uv_handle_t *handle)
+uvsocks_free_handle (uv_handle_t *handle)
 {
   UvSocksPoll *poll = handle->data;
 
   free (poll->buf);
   free (poll);
+  free (handle);
 }
 
 static void
-uvsocks_destroy_poll (UvSocksPoll *poll)
+uvsocks_free_packet_req (uv_write_t *req,
+                         int         status)
 {
-  uv_poll_stop (&poll->handle);
-  uvsocks_close_socket (poll->sock);
-  uv_close ((uv_handle_t*) &poll->handle, uvsocks_free_poll);
+  free (req);
+}
+
+static void
+uvsocks_write_packet (uv_tcp_t *tcp,
+                      char     *packet,
+                      size_t    len)
+{
+  UvSocksPoll *poll = tcp->data;
+  UvSocksPacketReq *req;
+
+  req = (UvSocksPacketReq *) malloc (sizeof (*req));
+  req->buf = uv_buf_init (packet, (unsigned int) len);
+  uv_mutex_lock (&poll->context->mutex);
+  uv_write ((uv_write_t *) req,
+            (uv_stream_t *) tcp,
+            &req->buf,
+             1,
+             uvsocks_free_packet_req);
+  uv_mutex_unlock (&poll->context->mutex);
 }
 
 static void
@@ -402,19 +417,16 @@ uvsocks_remove_context (UvSocks        *uvsocks,
   if (context == uvsocks->contexts)
     uvsocks->contexts = context->next;
 
-  if (uv_is_active ((uv_handle_t *) &context->remote->handle))
-    {
-      fprintf (stderr,
-              "uvsocks_destroy_poll remote\n");
-      uvsocks_destroy_poll (context->remote);
-    }
+  fprintf (stderr,
+          "uvsocks_destroy_poll remote\n");
+  uv_read_stop ((uv_stream_t *) context->remote->tcp);
+  uv_close ((uv_handle_t *) context->remote->tcp, uvsocks_free_handle);
 
-  if (uv_is_active ((uv_handle_t *) &context->local->handle))
-    {
-      fprintf (stderr,
-              "uvsocks_destroy_poll local\n");
-      uvsocks_destroy_poll (context->local);
-    }
+
+  fprintf (stderr,
+          "uvsocks_destroy_poll local\n");
+  uv_read_stop ((uv_stream_t *) context->local->tcp);
+  uv_close ((uv_handle_t *) context->local->tcp, uvsocks_free_handle);
 
   uv_mutex_destroy (&context->mutex);
   g_free (context);
@@ -425,6 +437,124 @@ uvsocks_remote_set_stage (UvSocksContext *context,
                           UvSocksStage    stage)
 {
   context->stage = stage;
+}
+
+static void
+uvsocks_remote_login (UvSocksContext *context)
+{
+  char packet[20];
+  size_t packet_size;
+
+  uvsocks_remote_set_stage (context, UVSOCKS_STAGE_HANDSHAKE);
+
+  //+----+----------+----------+
+  //|VER | NMETHODS | METHODS  |
+  //+----+----------+----------+
+  //| 1  |    1     | 1 to 255 |
+  //+----+----------+----------+
+  // The initial greeting from the client is
+  // field 1: SOCKS version number (must be 0x05 for this version)
+  // field 2: number of authentication methods supported, 1 byte
+  // field 3: authentication methods, variable length, 1 byte per method supported
+  packet_size = 0;
+  packet[packet_size++] = 0x05;
+  packet[packet_size++] = 0x01;
+  packet[packet_size++] = UVSOCKS_AUTH_PASSWD;
+
+  uvsocks_write_packet (context->remote->tcp, packet, 3);
+}
+
+static void
+uvsocks_remote_auth (UvSocksContext *context)
+{
+  char packet[1024];
+  size_t packet_size;
+  size_t length;
+
+  uvsocks_remote_set_stage (context, UVSOCKS_STAGE_AUTHENTICATE);
+
+  //+----+------+----------+------+----------+
+  //|VER | ULEN |  UNAME   | PLEN |  PASSWD  |
+  //+----+------+----------+------+----------+
+  //| 1  |  1   | 1 to 255 |  1   | 1 to 255 |
+  //+----+------+----------+------+----------+
+  //field 1: version number, 1 byte (must be 0x01)
+  //field 2: username length, 1 byte
+  //field 3: username
+  //field 4: password length, 1 byte
+  //field 5: password
+  packet_size = 0;
+  packet[packet_size++] = 0x01;
+  length = strlen (context->uvsocks->user);
+  packet[packet_size++] = (char) length;
+  memcpy (&packet[packet_size], context->uvsocks->user, length);
+  packet_size += length;
+
+  length = strlen (context->uvsocks->password);
+  packet[packet_size++] = (char) length;
+  memcpy (&packet[packet_size], context->uvsocks->password, length);
+  packet_size += length;
+
+  uvsocks_write_packet (context->remote->tcp, packet, packet_size);
+}
+
+static void
+uvsocks_remote_establish (UvSocksContext *context)
+{
+  char packet[1024];
+  size_t packet_size;
+  unsigned short port;
+  struct sockaddr_in addr;
+
+  uvsocks_remote_set_stage (context, UVSOCKS_STAGE_ESTABLISH);
+
+  //+----+-----+-------+------+----------+----------+
+  //|VER | CMD |  RSV  | ATYP | DST.ADDR | DST.PORT |
+  //+----+-----+-------+------+----------+----------+
+  //| 1  |  1  | X'00' |  1   | Variable |    2     |
+  //+----+-----+-------+------+----------+----------+
+  //The client's connection request is
+  //field 1: SOCKS version number, 1 byte (must be 0x05 for this version)
+  //field 2: command code, 1 byte:
+  //0x01 = establish a TCP/IP stream connection
+  //0x02 = establish a TCP/IP port binding
+  //0x03 = associate a UDP port
+  //
+  //field 3: reserved, must be 0x00
+  //field 4: address type, 1 byte:
+  //0x01 = IPv4 address
+  //0x03 = Domain name
+  //0x04 = IPv6 address
+  //
+  //field 5: destination address of 4 bytes for IPv4 address
+  //1 byte of name length followed by the name for domain name
+  //16 bytes for IPv6 address
+  //
+  //field 6: port number in a network byte order, 2 bytes
+  packet_size = 0;
+  packet[packet_size++] = 0x05;
+  packet[packet_size++] = context->forward->command;
+  packet[packet_size++] = 0x00;
+  packet[packet_size++] = UVSOCKS_ADDR_TYPE_IPV4;
+  if (context->forward->command == UVSOCKS_CMD_CONNECT)
+    {
+      uv_ip4_addr (context->forward->remote_host,
+                   context->forward->remote_port,
+                  &addr);
+      port = htons (context->forward->remote_port);
+    }
+  if (context->forward->command == UVSOCKS_CMD_BIND)
+    {
+      uv_ip4_addr (context->forward->listen_host,
+                   context->forward->listen_port,
+                  &addr);
+      port = htons (context->forward->listen_port);
+    }
+  memcpy (&packet[packet_size], &addr.sin_addr.S_un.S_addr, 4);
+  packet_size += 4;
+  memcpy (&packet[packet_size], &port, 2);
+  packet_size += 2;
+  uvsocks_write_packet (context->remote->tcp, packet, packet_size);
 }
 
 static UvSocksContext *
@@ -446,12 +576,8 @@ uvsocks_create_context (UvSocksForward *forward)
   local->buf = malloc (UVSOCKS_BUF_MAX);
   local->read = 0;
   local->context = context;
-#ifdef _WIN32
-  local->sock = INVALID_SOCKET;
-#else
-  local->sock = -1;
-#endif
-  local->handle.data = local;
+  local->tcp = malloc (sizeof (*local->tcp));
+  local->tcp->data = local;
 
   remote =  malloc (sizeof (*remote));
   if (!remote)
@@ -463,17 +589,14 @@ uvsocks_create_context (UvSocksForward *forward)
   remote->buf = malloc (UVSOCKS_BUF_MAX);
   remote->read = 0;
   remote->context = context;
-#ifdef _WIN32
-  remote->sock = INVALID_SOCKET;
-#else
-  remote->sock = -1;
-#endif
-  remote->handle.data = remote;
+  remote->tcp = malloc (sizeof (*local->tcp));
+  remote->tcp->data = remote;
 
+  uv_mutex_init (&context->mutex);
   context->forward = forward;
   context->local = local;
   context->remote = remote;
-  uv_mutex_init (&context->mutex);
+
   uvsocks_remote_set_stage (context, UVSOCKS_STAGE_NONE);
 
   return context;
@@ -601,38 +724,6 @@ uvsocks_set_nonblocking (uv_os_sock_t sock)
   return 0;
 }
 
-static int
-uvsocks_create_socket (uv_os_sock_t *sock)
-{
-  uv_os_sock_t s;
-
-  s = socket (AF_INET, SOCK_STREAM, IPPROTO_IP);
-#ifdef _WIN32
-  if (s == INVALID_SOCKET)
-    return 1;
-#else
-  if (s < 0)
-    return 1;
-#endif
-  *sock = s;
-  return 0;
-}
-
-static int
-uvsocks_got_eagain (void)
-{
-#ifdef _WIN32
-  return WSAGetLastError () == WSAEWOULDBLOCK;
-#else
-  return errno == EAGAIN
-      || errno == EINPROGRESS
-#ifdef EWOULDBLOCK
-      || errno == EWOULDBLOCK;
-#endif
-      ;
-#endif
-}
-
 static void
 uvsocks_dns_resolved (uv_getaddrinfo_t  *resolver,
                       int                status,
@@ -719,564 +810,359 @@ uvsocks_dns_resolve (UvSocks              *uvsocks,
   g_free (port);
 }
 
-static int
-uvsocks_write_packet (uv_os_sock_t sock,
-                      char        *packet,
-                      size_t       len)
+static void
+uvsocks_remote_alloc_buffer (uv_handle_t *handle,
+                             size_t       suggested_size,
+                             uv_buf_t    *buf)
 {
-  return send (sock, packet, (int) len, 0);
+  UvSocksPoll *poll = handle->data;
+  //UvSocksContext *context = handle->data;
+  size_t size;
+
+  size = UVSOCKS_BUF_MAX;
+  if (size > suggested_size)
+    size = suggested_size;
+
+  buf->base = poll->context->remote->buf;
+  buf->len = UV_BUF_LEN (size);
+}
+
+static void
+uvsocks_local_alloc_buffer (uv_handle_t *handle,
+                            size_t       suggested_size,
+                            uv_buf_t    *buf)
+{
+  UvSocksPoll *poll = handle->data;
+  size_t size;
+
+  size = UVSOCKS_BUF_MAX;
+  if (size > suggested_size)
+    size = suggested_size;
+
+  buf->base = poll->context->local->buf;
+  buf->len = UV_BUF_LEN (size);
+}
+
+static void
+uvsocks_local_connected (uv_connect_t *connect,
+                         int           status)
+{
+  UvSocksContext *context = connect->data;
+
+  if (status < 0)
+    {
+      fprintf (stderr,
+              "failed to connect to %s@%s:%d - %s\n",
+               context->uvsocks->user,
+               context->uvsocks->host,
+               context->uvsocks->port,
+               uv_strerror ((int) status));
+      if (context->uvsocks->callback_func)
+        context->uvsocks->callback_func (context->uvsocks,
+                                         UVSOCKS_ERROR_CONNECT,
+                                         context->uvsocks->callback_data);
+
+      uvsocks_remove_context (context->uvsocks, context);
+      free (connect);
+      return;
+    }
+  uvsocks_remote_set_stage (context, UVSOCKS_STAGE_TUNNEL);
+  uvsocks_local_start_read (context);
+
+  free (connect);
+}
+
+static void
+uvsocks_connect_local_real (UvSocksContext   *context,
+                             struct addrinfo  *resolved)
+{
+  uv_connect_t *connect;
+
+  connect = malloc (sizeof (*connect));
+  if (!connect)
+    return;
+
+  connect->data = context;
+  uv_tcp_init (uv_default_loop (), context->local->tcp);
+  uv_tcp_connect (connect,
+                  context->local->tcp,
+                  (const struct sockaddr *)resolved->ai_addr,
+                  uvsocks_local_connected);
 }
 
 static int
-uvsocks_read_packet (uv_os_sock_t sock,
-                     char        *buffer,
-                     size_t       read)
+uvsocks_connect_local (UvSocksForward *forward,
+                       UvSocksContext *context,
+                       char           *host,
+                       int             port)
 {
-  return recv (sock, buffer, (int) read, 0);
+  uvsocks_dns_resolve (forward->uvsocks,
+                       host,
+                       g_strdup_printf("%i", port),
+                       uvsocks_connect_local_real,
+                       context);
+  return 0;
 }
 
 static int
-uvsocks_local_read_start (UvSocksContext *context);
+uvsocks_local_start_read (UvSocksContext *context);
 
 static void
 uvsocks_reverse_forward (UvSocks *uvsocks,
                          void    *data);
 
 static void
-uvsocks_remote_read (uv_poll_t *handle,
-                     int        status,
-                     int        events)
+uvsocks_remote_read (uv_stream_t    *stream,
+                     ssize_t         nread,
+                     const uv_buf_t *buf)
 {
-  UvSocksPoll *poll = handle->data;
+  UvSocksPoll *poll = stream->data;
   UvSocksContext *context = poll->context;
-  UvSocks *uvsocks = poll->context->uvsocks;
 
-  if (status < 0)
+  if (nread < 0)
     {
       fprintf (stderr,
-              "failed poll remote read -> %s@%s:%d status:%d events:%d\n",
-               uvsocks->user,
-               uvsocks->host,
-               uvsocks->port,
-               status,
-               events);
-      if (uvsocks->callback_func)
-        uvsocks->callback_func (uvsocks,
-                                UVSOCKS_ERROR_POLL_REMOTE_READ,
-                                uvsocks->callback_data);
+              "socks: failed to read remote client: %s\n",
+               uv_strerror ((int) nread));
 
-      uvsocks_remove_context (uvsocks, poll->context);
-      return;
-    }
+      if (context->uvsocks->callback_func)
+        context->uvsocks->callback_func (context->uvsocks,
+                                       UVSOCKS_ERROR_REMOTE_READ,
+                                       context->uvsocks->callback_data);
 
-  if (events & UV_DISCONNECT)
-    {
-      fprintf (stderr,
-              "remote disconnected from %s@%s:%d status:%d events:%d\n",
-               uvsocks->user,
-               uvsocks->host,
-               uvsocks->port,
-               status,
-               events);
-
-      uvsocks_remove_context (uvsocks, poll->context);
+      uvsocks_remove_context (context->uvsocks, context);
       if (context->forward->command == UVSOCKS_CMD_BIND)
-        uvsocks_send_async (uvsocks,
+        uvsocks_send_async (context->uvsocks,
                             uvsocks_reverse_forward,
                             context->forward, NULL);
       return;
     }
-
-  if (events & UV_WRITABLE)
-    {
-      switch (context->stage)
-        {
-          case UVSOCKS_STAGE_NONE:
-          break;
-          case UVSOCKS_STAGE_CONNECTED:
-            {
-              char packet[20];
-              size_t packet_size;
-
-              uvsocks_remote_set_stage (context, UVSOCKS_STAGE_AUTHENTICATE);
-              packet_size = 0;
-              packet[packet_size++] = UVSOCKS_VER_5;
-              packet[packet_size++] = 0x01;
-              packet[packet_size++] = UVSOCKS_AUTH_PASSWD;
-
-              uvsocks_write_packet (poll->sock, packet, 3);
-            }
-            break;
-          case UVSOCKS_STAGE_AUTHENTICATE:
-          break;
-          case UVSOCKS_STAGE_AUTHENTICATED:
-            {
-              char packet[20];
-              size_t packet_size;
-              size_t length;
-
-              uvsocks_remote_set_stage (context, UVSOCKS_STAGE_ESTABLISH);
-              packet_size = 0;
-              packet[packet_size++] = 0x01;
-              length = strlen (uvsocks->user);
-              packet[packet_size++] = (char) length;
-              memcpy (&packet[packet_size], uvsocks->user, length);
-              packet_size += length;
-
-              length = strlen (uvsocks->password);
-              packet[packet_size++] = (char) length;
-              memcpy (&packet[packet_size], uvsocks->password, length);
-              packet_size += length;
-
-              uvsocks_write_packet (poll->sock, packet, packet_size);
-            }
-            break;
-          case UVSOCKS_STAGE_ESTABLISH:
-          break;
-          case UVSOCKS_STAGE_ESTABLISHED:
-            {
-              char packet[20];
-              size_t packet_size;
-              unsigned short port;
-              struct sockaddr_in addr;
-
-              uvsocks_remote_set_stage (context, UVSOCKS_STAGE_TUNNEL);
-              packet_size = 0;
-              packet[packet_size++] = UVSOCKS_VER_5;
-              packet[packet_size++] = context->forward->command;
-              packet[packet_size++] = 0x00;
-              packet[packet_size++] = UVSOCKS_ADDR_TYPE_IPV4;
-
-              if (context->forward->command == UVSOCKS_CMD_CONNECT)
-                {
-                  uv_ip4_addr (context->forward->remote_host,
-                               context->forward->remote_port,
-                              &addr);
-                  port = htons (context->forward->remote_port);
-                }
-              if (context->forward->command == UVSOCKS_CMD_BIND)
-                {
-                  uv_ip4_addr (context->forward->listen_host,
-                               context->forward->listen_port,
-                              &addr);
-                  port = htons (context->forward->listen_port);
-                }
-
-              memcpy (&packet[packet_size], &addr.sin_addr.S_un.S_addr, 4);
-              packet_size += 4;
-              memcpy (&packet[packet_size], &port, 2);
-              packet_size += 2;
-              uvsocks_write_packet (poll->sock, packet, packet_size);
-            }
-            break;
-          case UVSOCKS_STAGE_BIND:
-            break;
-          case UVSOCKS_STAGE_TUNNELED:
-            {
-              UvSocksPoll *local = poll->context->local;
-              int sent;
-
-              if (local->read > 0)
-                {
-                  uv_mutex_lock (&poll->context->mutex);
-                  sent = uvsocks_write_packet (poll->sock,
-                                               local->buf,
-                                               local->read);
-                  local->read -= sent;
-                  uv_mutex_unlock (&poll->context->mutex);
-                  if (poll->read < 0 || sent < 0)
-                    {
-                      fprintf (stderr,
-                              "failed to remote send\n");
-                      if (uvsocks->callback_func)
-                        uvsocks->callback_func (uvsocks,
-                                                UVSOCKS_ERROR_POLL_REMOTE_SEND,
-                                                uvsocks->callback_data);
-
-                      uvsocks_remove_context (uvsocks, poll->context);
-                      if (context->forward->command == UVSOCKS_CMD_BIND)
-                        uvsocks_send_async (uvsocks,
-                                            uvsocks_reverse_forward,
-                                            context->forward, NULL);
-                      return;
-                    }
-                }
-            }
-            break;
-        }
-    }
-
-  if ((events & UV_READABLE))
-    {
-      switch (context->stage)
-        {
-          case UVSOCKS_STAGE_NONE:
-          break;
-          case UVSOCKS_STAGE_CONNECTED:
-          break;
-          case UVSOCKS_STAGE_AUTHENTICATE:
-            {
-              poll->read += uvsocks_read_packet (poll->sock,
-                                                &poll->buf[poll->read],
-                                                 2);
-              if (poll->read < 2)
-                break;
-
-              if (poll->buf[0] != UVSOCKS_VER_5 ||
-                  poll->buf[1] != UVSOCKS_AUTH_PASSWD)
-                {
-                  fprintf (stderr,
-                          "failed to handshake request(%d-%d)\n",
-                           poll->buf[0],
-                           poll->buf[1]);
-                  if (context->uvsocks->callback_func)
-                    context->uvsocks->callback_func (context->uvsocks,
-                                                     UVSOCKS_ERROR_HANDSHAKE,
-                                                     context->uvsocks->callback_data);
-                  uvsocks_remove_context (uvsocks, poll->context);
-                  if (context->forward->command == UVSOCKS_CMD_BIND)
-                    uvsocks_send_async (uvsocks,
-                                        uvsocks_reverse_forward,
-                                        context->forward, NULL);
-                  return;
-                }
-
-              poll->read -= 2;
-              uvsocks_remote_set_stage (context, UVSOCKS_STAGE_AUTHENTICATED);
-            }
-            break;
-          break;
-          case UVSOCKS_STAGE_AUTHENTICATED:
-            break;
-          case UVSOCKS_STAGE_ESTABLISH:
-            {
-              poll->read += uvsocks_read_packet (poll->sock,
-                                                &poll->buf[poll->read],
-                                                 2);
-              if (poll->read < 2)
-                break;
-              if (poll->buf[0] != 0x01 ||
-                  poll->buf[1] != UVSOCKS_AUTH_ALLOW)
-                {
-                  fprintf (stderr,
-                          "failed to login(%d-%d)\n",
-                           poll->buf[0],
-                           poll->buf[1]);
-                  if (context->uvsocks->callback_func)
-                    context->uvsocks->callback_func (context->uvsocks,
-                                                     UVSOCKS_ERROR_AUTH,
-                                                     context->uvsocks->callback_data);
-                  uvsocks_remove_context (uvsocks, poll->context);
-                  if (context->forward->command == UVSOCKS_CMD_BIND)
-                    uvsocks_send_async (uvsocks,
-                                        uvsocks_reverse_forward,
-                                        context->forward, NULL);
-                  return;
-                }
-
-              poll->read -= 2;
-              uvsocks_remote_set_stage (context, UVSOCKS_STAGE_ESTABLISHED);
-            }
-            break;
-          case UVSOCKS_STAGE_ESTABLISHED:
-            break;
-          case UVSOCKS_STAGE_TUNNEL:
-          case UVSOCKS_STAGE_BIND:
-            {
-              poll->read += uvsocks_read_packet (poll->sock,
-                                                &poll->buf[poll->read],
-                                                 10);
-              if (poll->read < 10)
-                break;
-              if (poll->buf[0] != UVSOCKS_VER_5 ||
-                  poll->buf[1] != 0x00)
-                {
-                  fprintf (stderr,
-                          "failed connection request(%d-%d)\n",
-                           poll->buf[0],
-                           poll->buf[1]);
-                  if (context->uvsocks->callback_func)
-                    context->uvsocks->callback_func (context->uvsocks,
-                                                      UVSOCKS_ERROR_CONNECT,
-                                                      context->uvsocks->callback_data);
-                  uvsocks_remove_context (uvsocks, poll->context);
-                  if (context->forward->command == UVSOCKS_CMD_BIND)
-                    uvsocks_send_async (uvsocks,
-                                        uvsocks_reverse_forward,
-                                        context->forward, NULL);
-                  return;
-                }
-
-              poll->read -= 10;
-
-              if (context->stage == UVSOCKS_STAGE_TUNNEL &&
-                  context->forward->command == UVSOCKS_CMD_BIND)
-                {
-                  int port;
-
-                  memcpy (&port, &poll->buf[8], 2);
-                  port = htons(port);
-
-                  if (context->forward->callback_func)
-                    context->forward->callback_func (uvsocks,
-                                                     context->forward->remote_host,
-                                                     context->forward->remote_port,
-                                                     uvsocks->host,
-                                                     port,
-                                                     context->forward->callback_data);
-                  uvsocks_remote_set_stage (context, UVSOCKS_STAGE_BIND);
-                  break;
-                }
-
-              if (context->stage == UVSOCKS_STAGE_BIND &&
-                  context->forward->command == UVSOCKS_CMD_BIND)
-                {
-                  struct sockaddr_in addr;
-                  int r;
-
-                  uv_ip4_addr (context->forward->remote_host,
-                               context->forward->remote_port,
-                              &addr);
-                  if (uvsocks_create_socket (&context->local->sock))
-                    break;
-
-                  r = connect (context->local->sock, (struct sockaddr*) &addr, sizeof (addr));
-                  if (r || uvsocks_got_eagain ())
-                    {
-                      fprintf (stderr,
-                              "failed to connect remote\n");
-                      if (context->uvsocks->callback_func)
-                        context->uvsocks->callback_func (context->uvsocks,
-                                                         UVSOCKS_ERROR_CONNECT,
-                                                         context->uvsocks->callback_data);
-                      uvsocks_remove_context (uvsocks, poll->context);
-                      return;
-                    }
-                }
-
-              uvsocks_remote_set_stage (context, UVSOCKS_STAGE_TUNNELED);
-              if (uvsocks_local_read_start (context))
-                {
-                  fprintf (stderr,
-                          "failed uvsocks_local_read_start\n");
-                  if (uvsocks->callback_func)
-                    uvsocks->callback_func (uvsocks,
-                                            UVSOCKS_ERROR_POLL_LOCAL_READ_START,
-                                            uvsocks->callback_data);
-
-                  uvsocks_remove_context (uvsocks, poll->context);
-                  return;
-                }
-            }
-            break;
-          case UVSOCKS_STAGE_TUNNELED:
-            {
-              int read;
-
-              uv_mutex_lock (&poll->context->mutex);
-              read = uvsocks_read_packet (poll->sock,
-                                         &poll->buf[poll->read],
-                                          UVSOCKS_BUF_MAX - poll->read);
-              poll->read += read;
-              uv_mutex_unlock (&poll->context->mutex);
-              if (poll->read < 0 || read < 0)
-                {
-                  fprintf (stderr,
-                          "failed to remote recv\n");
-                  if (uvsocks->callback_func)
-                    uvsocks->callback_func (uvsocks,
-                                            UVSOCKS_ERROR_POLL_REMOTE_RECV,
-                                            uvsocks->callback_data);
-
-                  uvsocks_remove_context (uvsocks, poll->context);
-                  if (context->forward->command == UVSOCKS_CMD_BIND)
-                    uvsocks_send_async (uvsocks,
-                                        uvsocks_reverse_forward,
-                                        context->forward, NULL);
-                  return;
-                }
-            }
-            break;
-        }
-    }
-}
-
-static void
-uvsocks_local_read (uv_poll_t*  handle,
-                    int         status,
-                    int         events)
-{
-  UvSocksPoll *poll = handle->data;
-  UvSocks *uvsocks = poll->context->uvsocks;
-
-  if (status < 0 )
-    {
-      fprintf (stderr,
-              "failed poll local read -> %s@%s:%d status:%d events:%d\n",
-               uvsocks->user,
-               uvsocks->host,
-               uvsocks->port,
-               status,
-               events);
-      if (uvsocks->callback_func)
-        uvsocks->callback_func (uvsocks,
-                                UVSOCKS_ERROR_POLL_LOCAL_READ,
-                                uvsocks->callback_data);
-      uvsocks_remove_context (uvsocks, poll->context);
-      return;
-    }
-
-  if (events & UV_DISCONNECT)
-    {
-      fprintf (stderr,
-              "local disconnected from %s@%s:%d status:%d events:%d\n",
-               uvsocks->user,
-               uvsocks->host,
-               uvsocks->port,
-               status,
-               events);
-      uvsocks_remove_context (uvsocks, poll->context);
-      if (poll->context->forward->command == UVSOCKS_CMD_BIND)
-        uvsocks_send_async (uvsocks,
-                            uvsocks_reverse_forward,
-                            poll->context->forward, NULL);
-      return;
-    }
-
-  if (events & UV_WRITABLE)
-    {
-      UvSocksPoll *remote = poll->context->remote;
-      int sent;
-
-      if (remote->read > 0)
-        {
-          uv_mutex_lock (&poll->context->mutex);
-          sent = uvsocks_write_packet (poll->sock,
-                                       remote->buf,
-                                       remote->read);
-          remote->read -= sent;
-          uv_mutex_unlock (&poll->context->mutex);
-          if (poll->read < 0 || sent < 0)
-            {
-              fprintf (stderr,
-                      "failed to local send\n");
-              if (uvsocks->callback_func)
-                uvsocks->callback_func (uvsocks,
-                                        UVSOCKS_ERROR_POLL_LOCAL_SEND,
-                                        uvsocks->callback_data);
-
-              uvsocks_remove_context (uvsocks, poll->context);
-              if (poll->context->forward->command == UVSOCKS_CMD_BIND)
-                uvsocks_send_async (uvsocks,
-                                    uvsocks_reverse_forward,
-                                    poll->context->forward, NULL);
-              return;
-            }
-        }
-    }
-
-  if (events & UV_READABLE)
-    {
-      int read;
-
-      uv_mutex_lock (&poll->context->mutex);
-      read = uvsocks_read_packet (poll->sock,
-                                 &poll->buf[poll->read],
-                                  UVSOCKS_BUF_MAX - poll->read);
-      poll->read += read;
-      uv_mutex_unlock (&poll->context->mutex);
-      if (poll->read < 0 || read < 0)
-        {
-          fprintf (stderr,
-                  "failed to local recv\n");
-          if (uvsocks->callback_func)
-            uvsocks->callback_func (uvsocks,
-                                    UVSOCKS_ERROR_POLL_LOCAL_RECV,
-                                    uvsocks->callback_data);
-
-          uvsocks_remove_context (uvsocks, poll->context);
-          if (poll->context->forward->command == UVSOCKS_CMD_BIND)
-            uvsocks_send_async (uvsocks,
-                                uvsocks_reverse_forward,
-                                poll->context->forward, NULL);
-          return;
-        }
-    }
-}
-
-static int
-uvsocks_local_read_start (UvSocksContext *context)
-{
-  int r;
-
-  r = uv_poll_init_socket (uv_default_loop (),
-                          &context->local->handle,
-                           context->local->sock);
-  if (r)
-    {
-      free (context->local);
-      return 1;
-    }
-  r = uv_poll_start (&context->local->handle,
-                      UV_READABLE | UV_WRITABLE | UV_DISCONNECT,
-                      uvsocks_local_read);
-  if (r)
-    return 1;
-
-  return 0;
-}
-
-static int
-uvsocks_remote_read_start (UvSocksContext *context)
-{
-  int r;
-
-  if (uvsocks_set_nonblocking (context->remote->sock))
-    return 1;
-
-  r = uv_poll_init_socket (uv_default_loop (),
-                          &context->remote->handle,
-                           context->remote->sock);
-  if (r)
-    {
-      free (context->remote);
-      return 1;
-    }
-  r = uv_poll_start (&context->remote->handle,
-                      UV_READABLE | UV_WRITABLE | UV_DISCONNECT,
-                      uvsocks_remote_read);
-  if (r)
-    return 1;
-
-  return 0;
-}
-
-static void
-uvsocks_connect_remote_real (UvSocksContext   *context,
-                             struct addrinfo  *resolved)
-{
-  struct sockaddr_in addr;
-  int r;
-
-  addr = *(const struct sockaddr_in *)resolved->ai_addr;
-
-  if (uvsocks_create_socket (&context->remote->sock))
+  if (nread == 0)
     return;
 
-  r = connect (context->remote->sock, (struct sockaddr*) &addr, sizeof (addr));
-  if (r || uvsocks_got_eagain ())
+  switch (context->stage)
+    {
+      case UVSOCKS_STAGE_NONE:
+      break;
+      case UVSOCKS_STAGE_HANDSHAKE:
+        {
+          //+----+--------+
+          //|VER | METHOD |
+          //+----+--------+
+          //| 1  |   1    |
+          //+----+--------+
+          //field 1: SOCKS version, 1 byte (0x05 for this version)
+          //field 2: chosen authentication method, 1 byte, or 0xFF if no acceptable methods were offered
+          if (nread < 2)
+            break;
+          if (context->remote->buf[0] != 0x05 ||
+              context->remote->buf[1] != UVSOCKS_AUTH_PASSWD)
+            {
+              fprintf (stderr,
+                      "socks: failed to handshake\n");
+
+              if (context->uvsocks->callback_func)
+                context->uvsocks->callback_func (context->uvsocks,
+                                               UVSOCKS_ERROR_HANDSHAKE,
+                                               context->uvsocks->callback_data);
+
+              uvsocks_remove_context (context->uvsocks, context);
+              break;
+            }
+          uvsocks_remote_auth (context);
+        }
+      break;
+      case UVSOCKS_STAGE_AUTHENTICATE:
+        {
+          //+----+--------+
+          //|VER | STATUS |
+          //+----+--------+
+          //| 1  |   1    |
+          //+----+--------+
+          //field 1: version, 1 byte
+          //field 2: status code, 1 byte 0x00 = success
+          //any other value = failure, connection must be closed
+          if (nread < 2)
+            break;
+          if (context->remote->buf[0] != 0x01 ||
+              context->remote->buf[1] != UVSOCKS_AUTH_ALLOW)
+            {
+              fprintf (stderr,
+                      "socks: failed to login to %s@%s:%d - SOCKS ver:%d status:%d",
+                       context->uvsocks->user,
+                       context->uvsocks->host,
+                       context->uvsocks->port,
+                       context->remote->buf[0],
+                       context->remote->buf[1]);
+              if (context->uvsocks->callback_func)
+                context->uvsocks->callback_func (context->uvsocks,
+                                               UVSOCKS_ERROR_AUTH,
+                                               context->uvsocks->callback_data);
+
+              uvsocks_remove_context (context->uvsocks, context);
+              break;
+            }
+          uvsocks_remote_establish (context);
+        }
+      break;
+      case UVSOCKS_STAGE_ESTABLISH:
+      case UVSOCKS_STAGE_BIND:
+        {
+          //field 1: SOCKS protocol version, 1 byte (0x05 for this version)
+          //field 2: status, 1 byte:
+          //0x00 = request granted
+          //0x01 = general failure
+          //0x02 = connection not allowed by ruleset
+          //0x03 = network unreachable
+          //0x04 = host unreachable
+          //0x05 = connection refused by destination host
+          //0x06 = TTL expired
+          //0x07 = command not supported / protocol error
+          //0x08 = address type not supported
+          //
+          //field 3: reserved, must be 0x00
+          //field 4: address type, 1 byte: 0x01 = IPv4 address
+          //0x03 = Domain name
+          //0x04 = IPv6 address
+          //
+          //field 5: destination address of 4 bytes for IPv4 address
+          //1 byte of name length followed by the name for domain name
+          //16 bytes for IPv6 address
+          //
+          //field 6: network byte order port number, 2 bytes
+          if (context->remote->buf[0] != 0x05 ||
+              context->remote->buf[1] != 0x00)
+            {
+              fprintf (stderr,
+                      "socks: failed to forward %s:%d -> localhost:%d - SOCKS ver:%d status:%d",
+                       context->forward->remote_host,
+                       context->forward->remote_port,
+                       context->forward->listen_port,
+                       context->remote->buf[0],
+                       context->remote->buf[1]);
+              if (context->uvsocks->callback_func)
+                context->uvsocks->callback_func (context->uvsocks,
+                                               UVSOCKS_ERROR_FORWARD,
+                                               context->uvsocks->callback_data);
+
+              uvsocks_remove_context (context->uvsocks, context);
+              break;
+            }
+
+          if (context->stage == UVSOCKS_STAGE_ESTABLISH &&
+              context->forward->command == UVSOCKS_CMD_BIND)
+            {
+              int port;
+
+              memcpy (&port, &poll->buf[8], 2);
+              port = htons(port);
+
+              if (context->forward->callback_func)
+                context->forward->callback_func (context->uvsocks,
+                                                 context->forward->remote_host,
+                                                 context->forward->remote_port,
+                                                 context->uvsocks->host,
+                                                 port,
+                                                 context->forward->callback_data);
+              uvsocks_remote_set_stage (context, UVSOCKS_STAGE_BIND);
+              break;
+            }
+
+          if (context->stage == UVSOCKS_STAGE_BIND &&
+              context->forward->command == UVSOCKS_CMD_BIND)
+            {
+              uvsocks_connect_local (context->forward,
+                                     context,
+                                     context->forward->remote_host,
+                                     context->forward->remote_port);
+              break;
+            }
+
+          uvsocks_remote_set_stage (context, UVSOCKS_STAGE_TUNNEL);
+          uvsocks_local_start_read (context);
+        }
+      break;
+      case UVSOCKS_STAGE_TUNNEL:
+        {
+          uvsocks_write_packet (context->local->tcp, context->remote->buf, nread);
+        }
+      break;
+    }
+}
+
+static void
+uvsocks_local_read (uv_stream_t    *stream,
+                    ssize_t         nread,
+                    const uv_buf_t *buf)
+{
+  UvSocksPoll *poll = stream->data;
+  UvSocksContext *context = poll->context;
+
+  if (nread < 0)
     {
       fprintf (stderr,
-              "failed to connect remote\n");
+              "socks: failed to read local client: %s\n",
+               uv_strerror ((int) nread));
+
       if (context->uvsocks->callback_func)
-       context->uvsocks->callback_func (context->uvsocks,
-                                        UVSOCKS_ERROR_CONNECT,
-                                        context->uvsocks->callback_data);
+        context->uvsocks->callback_func (context->uvsocks,
+                                         UVSOCKS_ERROR_LOCAL_READ,
+                                         context->uvsocks->callback_data);
+
       uvsocks_remove_context (context->uvsocks, context);
+      if (context->forward->command == UVSOCKS_CMD_BIND)
+        uvsocks_send_async (context->uvsocks,
+                            uvsocks_reverse_forward,
+                            context->forward, NULL);
       return;
     }
-  uvsocks_remote_set_stage (context, UVSOCKS_STAGE_CONNECTED);
-  if (uvsocks_remote_read_start (context))
+  if (nread == 0)
+    return;
+
+  uvsocks_write_packet (context->remote->tcp, context->local->buf, nread);
+}
+
+static int
+uvsocks_local_start_read (UvSocksContext *context)
+{
+  return uv_read_start ((uv_stream_t *) context->local->tcp,
+                                        uvsocks_local_alloc_buffer,
+                                        uvsocks_local_read);
+}
+
+static int
+uvsocks_remote_start_read (UvSocksContext *context)
+{
+  return uv_read_start ((uv_stream_t *) context->remote->tcp,
+                                        uvsocks_remote_alloc_buffer,
+                                        uvsocks_remote_read);
+}
+
+static void
+uvsocks_remote_connected (uv_connect_t *connect,
+                          int           status)
+{
+  UvSocksContext *context = connect->data;
+
+  if (status < 0)
+    {
+      fprintf (stderr,
+              "failed to connect to %s@%s:%d - %s\n",
+               context->uvsocks->user,
+               context->uvsocks->host,
+               context->uvsocks->port,
+               uv_strerror ((int) status));
+      if (context->uvsocks->callback_func)
+        context->uvsocks->callback_func (context->uvsocks,
+                                         UVSOCKS_ERROR_CONNECT,
+                                         context->uvsocks->callback_data);
+
+      uvsocks_remove_context (context->uvsocks, context);
+      free (connect);
+      return;
+    }
+  uvsocks_remote_login (context);
+  if (uvsocks_remote_start_read (context))
     {
       fprintf (stderr,
               "failed uvsocks_remote_read_start\n");
@@ -1288,6 +1174,25 @@ uvsocks_connect_remote_real (UvSocksContext   *context,
       uvsocks_remove_context (context->uvsocks, context);
       return;
     }
+  free (connect);
+}
+
+static void
+uvsocks_connect_remote_real (UvSocksContext   *context,
+                             struct addrinfo  *resolved)
+{
+  uv_connect_t *connect;
+
+  connect = malloc (sizeof (*connect));
+  if (!connect)
+    return;
+
+  connect->data = context;
+  uv_tcp_init (uv_default_loop (), context->remote->tcp);
+  uv_tcp_connect (connect,
+                  context->remote->tcp,
+                  (const struct sockaddr *)resolved->ai_addr,
+                  uvsocks_remote_connected);
 }
 
 static int
@@ -1305,35 +1210,29 @@ uvsocks_connect_remote (UvSocksForward *forward,
 }
 
 static void
-uvsocks_local_new_connection (uv_poll_t *handle,
-                              int        status,
-                              int        events)
+uvsocks_local_new_connection (uv_stream_t *stream,
+                              int          status)
 {
-  UvSocksForward *forward = handle->data;
+  UvSocksForward *forward = stream->data;
   UvSocksPoll *server = forward->server;
   UvSocksContext *context;
-  struct sockaddr_in addr;
-  socklen_t addr_len;
-  uv_os_sock_t sock;
 
-  addr_len = sizeof (addr);
-  sock = accept (server->sock, (struct sockaddr*) &addr, &addr_len);
-#ifdef _WIN32
-  if (sock == INVALID_SOCKET)
-    return;
-#else
-  if (s < 0)
-    return;
-#endif
-
-  if (uvsocks_set_nonblocking (sock))
+  if (status == -1)
     return;
 
   context = uvsocks_create_context (forward);
   if (!context)
-    return;
+    {
+      return;
+    }
 
-  context->local->sock = sock;
+  uv_tcp_init (uv_default_loop (), context->local->tcp);
+  if (uv_accept (stream, (uv_stream_t *) context->local->tcp))
+    {
+      free (context);
+      return;
+    }
+
   uvsocks_add_context (forward->uvsocks, context);
 
   uvsocks_connect_remote (forward,
@@ -1355,58 +1254,48 @@ uvsocks_start_local_server (UvSocks    *uvsocks,
 
   if (*port < 0 || *port > 65535)
     return NULL;
-  //uv_ip4_addr (host, *port, &addr);
-  memset ( &addr, 0, sizeof (addr));
-  addr.sin_family     = AF_INET;
-  addr.sin_port       = htons ( *port);
-  addr.sin_addr.s_addr = htonl ( INADDR_ANY);
+  uv_ip4_addr (host, *port, &addr);
 
   server = calloc (1, sizeof (*server));
   if (!server)
     return NULL;
 
-  if (uvsocks_create_socket (&server->sock))
-    return NULL;
-
-  if (uvsocks_set_nonblocking (server->sock))
-    return NULL;
-
-#ifndef _WIN32
-  {
-    /* Allow reuse of the port. */
-    int yes = 1;
-    r = setsockopt (server->sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof (yes);
-    if (r)
+  server->tcp = malloc (sizeof (*server->tcp));
+  if (!server->tcp)
+    {
+      free (server);
       return NULL;
-  }
-#endif
+    }
 
-  r = bind (server->sock, (const struct sockaddr*) &addr, sizeof (addr));
+  uv_tcp_init (uv_default_loop (), server->tcp);
+
+  r = uv_tcp_bind (server->tcp, (const struct sockaddr *) &addr, 0);
   if (r < 0)
-    return NULL;
+    {
+      fprintf (stderr,
+              "uvsocks: failed to bind to %s:0 - %s\n", host,
+               uv_strerror (r));
+      goto fail;
+    }
 
-  r = uv_poll_init_socket (uv_default_loop (),
-                          &server->handle,
-                           server->sock);
-  server->handle.data = server;
-
-  namelen = sizeof(name);
-  getsockname (server->sock, (struct sockaddr *)&name, &namelen);
+  namelen = sizeof (name);
+  uv_tcp_getsockname (server->tcp, (struct sockaddr *) &name, &namelen);
   *port = ntohs (name.sin_port);
 
-  r = listen (server->sock, SOMAXCONN);
-  if (r)
-    goto fail;
-
-  r = uv_poll_start (&server->handle,
-                      UV_READABLE | UV_WRITABLE | UV_DISCONNECT,
-                      uvsocks_local_new_connection);
-  if (r)
-    goto fail;
-
+  r = uv_listen ((uv_stream_t *) server->tcp, 16, uvsocks_local_new_connection);
+  if (r < 0)
+    {
+      fprintf (stderr,
+              "socks: failed to listen on %s:%d - %s\n",
+               host,
+              *port,
+                   uv_strerror (r));
+      goto fail;
+    }
   return server;
 
 fail:
+  free (server->tcp);
   free (server);
   return NULL;
 }
@@ -1443,7 +1332,7 @@ uvsocks_forward (UvSocks *uvsocks,
     }
 
   forward->server = s;
-  forward->server->handle.data = forward;
+  forward->server->tcp->data = forward;
   forward->listen_port = port;
 
   if (forward->callback_func)
