@@ -811,7 +811,7 @@ uvsocks_remote_read (uv_poll_t *handle,
           break;
           case UVSOCKS_STAGE_AUTHENTICATED:
             {
-              char packet[20];
+              char packet[1024];
               size_t packet_size;
               size_t length;
 
