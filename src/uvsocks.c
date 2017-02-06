@@ -775,6 +775,24 @@ uvsocks_remote_read0 (uv_poll_t*  handle,
       return;
     }
 
+  if (events & UV_DISCONNECT)
+    {
+      fprintf (stderr,
+              "remote disconnected from %s@%s:%d status:%d events:%d\n",
+               uvsocks->user,
+               uvsocks->host,
+               uvsocks->port,
+               status,
+               events);
+
+      uvsocks_remove_context (uvsocks, poll->context);
+      if (poll->context->forward->command == UVSOCKS_CMD_BIND)
+        uvsocks_send_async (uvsocks,
+                            uvsocks_reverse_forward,
+                            poll->context->forward, NULL);
+      return;
+    }
+
   if (events & UV_READABLE)
     {
       int read;
@@ -814,6 +832,23 @@ uvsocks_local_read0 (uv_poll_t*  handle,
                                 UVSOCKS_ERROR_POLL_LOCAL_READ,
                                 uvsocks->callback_data);
       uvsocks_remove_context (uvsocks, poll->context);
+      return;
+    }
+
+  if (events & UV_DISCONNECT)
+    {
+      fprintf (stderr,
+              "local disconnected from %s@%s:%d status:%d events:%d\n",
+               uvsocks->user,
+               uvsocks->host,
+               uvsocks->port,
+               status,
+               events);
+      uvsocks_remove_context (uvsocks, poll->context);
+      if (poll->context->forward->command == UVSOCKS_CMD_BIND)
+        uvsocks_send_async (uvsocks,
+                            uvsocks_reverse_forward,
+                            poll->context->forward, NULL);
       return;
     }
 
@@ -1160,7 +1195,7 @@ uvsocks_remote_read (uv_poll_t *handle,
                   return;
                 }
               uv_poll_start (&context->remote->handle,
-                              UV_READABLE,
+                              UV_READABLE | UV_DISCONNECT,
                               uvsocks_remote_read0);
             }
             break;
@@ -1313,7 +1348,7 @@ uvsocks_local_read_start (UvSocksContext *context)
       return 1;
     }
   r = uv_poll_start (&context->local->handle,
-                      UV_READABLE,
+                      UV_READABLE | UV_DISCONNECT,
                       uvsocks_local_read0);
   if (r)
     return 1;
