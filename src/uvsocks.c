@@ -361,12 +361,15 @@ uvsocks_close_socket (uv_os_sock_t sock)
 #ifdef _WIN32
   if (sock != INVALID_SOCKET)
     {
-      shutdown (sock, SD_BOTH);
+      shutdown(sock, SD_SEND);
       closesocket (sock);
     }
 #else
   if (sock >= 0)
-    close (sock);
+    {
+      shutdown(context->sock, SHUT_WR);
+      close (sock);
+    }
 #endif
 }
 
