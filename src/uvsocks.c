@@ -366,8 +366,12 @@ uvsocks_close_socket (uv_os_sock_t sock)
     }
 #else
   if (sock >= 0)
-    close (sock);
+    {
+      shutdown (sock, SHUT_WR);
+      close (sock);
+    }
 #endif
+
 }
 
 static void
@@ -791,7 +795,7 @@ uvsocks_remote_read (uv_poll_t *handle,
           break;
           case UVSOCKS_STAGE_CONNECTED:
             {
-              char packet[1024];
+              char packet[20];
               size_t packet_size;
 
               uvsocks_remote_set_stage (context, UVSOCKS_STAGE_AUTHENTICATE);
@@ -807,7 +811,7 @@ uvsocks_remote_read (uv_poll_t *handle,
           break;
           case UVSOCKS_STAGE_AUTHENTICATED:
             {
-              char packet[1024];
+              char packet[20];
               size_t packet_size;
               size_t length;
 
@@ -831,7 +835,7 @@ uvsocks_remote_read (uv_poll_t *handle,
           break;
           case UVSOCKS_STAGE_ESTABLISHED:
             {
-              char packet[1024];
+              char packet[20];
               size_t packet_size;
               unsigned short port;
               struct sockaddr_in addr;
