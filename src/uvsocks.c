@@ -983,7 +983,7 @@ uvsocks_remote_read (uv_stream_t    *stream,
               context->remote->buf[1] != UVSOCKS_AUTH_ALLOW)
             {
               fprintf (stderr,
-                      "failed to login to %s@%s:%d - SOCKS ver:%d status:%d",
+                      "failed to login to %s@%s:%d - SOCKS ver:%d status:%d\n",
                        context->uvsocks->user,
                        context->uvsocks->host,
                        context->uvsocks->port,
