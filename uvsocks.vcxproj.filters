@@ -24,9 +24,6 @@
     <ClCompile Include="src\getopt.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\aqueue.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Image Include="image\uvsocks.ico">
@@ -37,10 +34,5 @@
     <ResourceCompile Include="uvsocks.rc">
       <Filter>Resource Files</Filter>
     </ResourceCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="src\aqueue.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
 </Project>

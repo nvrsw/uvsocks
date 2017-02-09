@@ -171,7 +171,6 @@
     <Text Include="README.md" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\aqueue.c" />
     <ClCompile Include="src\getopt.c" />
     <ClCompile Include="src\main.c" />
   </ItemGroup>
@@ -180,9 +179,6 @@
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="uvsocks.rc" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="src\aqueue.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

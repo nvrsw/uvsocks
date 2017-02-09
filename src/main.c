@@ -415,10 +415,8 @@ again:
 				  uvsocks_add_forward (uvsocks,
                                listen_host ? listen_host : "0.0.0.0",
                                listen_port,
-                               listen_path ? listen_path : "",
                                remote_host ? remote_host : "0.0.0.0",
                                remote_port,
-                               remote_path ? remote_path : "",
                                main_uvsocks_forwarded, NULL);
 			  else {
 				  fprintf (stderr,
@@ -437,10 +435,8 @@ again:
           uvsocks_add_reverse_forward (uvsocks,
                                        listen_host ? listen_host : "0.0.0.0",
                                        listen_port,
-                                       listen_path ? listen_path : "",
                                        remote_host ? remote_host : "0.0.0.0",
                                        remote_port,
-                                       remote_path ? remote_path : "",
                                        main_uvsocks_forwarded, NULL);
         else
           {
