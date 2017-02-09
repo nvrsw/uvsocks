@@ -489,6 +489,9 @@ uvsocks_free_context (UvSocks *uvsocks)
 void
 uvsocks_free (UvSocks *uvsocks)
 {
+  if (!uvsocks)
+    return;
+
   uvsocks_send_async (uvsocks, uvsocks_quit, NULL, NULL);
   uv_thread_join (&uvsocks->thread);
   uv_close ((uv_handle_t *) &uvsocks->async, NULL);
