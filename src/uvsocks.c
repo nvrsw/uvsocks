@@ -78,7 +78,7 @@ struct _UvSocksPoll
   UvSocksContext     *context;
   uv_poll_t           handle;
   uv_os_sock_t        sock;
-  size_t              read;
+  int                 read;
   char               *buf;
   UvSocksPoll        *write;
 };
@@ -796,7 +796,7 @@ uvsocks_poll_read (uv_poll_t*  handle,
               case UVSOCKS_STAGE_CONNECTED:
                 {
                   char *packet = poll->buf;
-                  size_t packet_size;
+                  int packet_size;
 
                   uvsocks_remote_set_stage (context, UVSOCKS_STAGE_AUTHENTICATE);
                   packet_size = 0;
@@ -804,7 +804,7 @@ uvsocks_poll_read (uv_poll_t*  handle,
                   packet[packet_size++] = 0x01;
                   packet[packet_size++] = UVSOCKS_AUTH_PASSWD;
 
-                  send (poll->sock, packet, 3, 0);
+                  send (poll->sock, packet, packet_size, 0);
                 }
                 break;
               case UVSOCKS_STAGE_AUTHENTICATE:
@@ -812,7 +812,7 @@ uvsocks_poll_read (uv_poll_t*  handle,
               case UVSOCKS_STAGE_AUTHENTICATED:
                 {
                   char *packet = poll->buf;
-                  size_t packet_size;
+                  int packet_size;
                   size_t length;
 
                   uvsocks_remote_set_stage (context, UVSOCKS_STAGE_ESTABLISH);
@@ -821,12 +821,12 @@ uvsocks_poll_read (uv_poll_t*  handle,
                   length = strlen (uvsocks->user);
                   packet[packet_size++] = (char) length;
                   memcpy (&packet[packet_size], uvsocks->user, length);
-                  packet_size += length;
+                  packet_size += (int) length;
 
                   length = strlen (uvsocks->password);
                   packet[packet_size++] = (char) length;
                   memcpy (&packet[packet_size], uvsocks->password, length);
-                  packet_size += length;
+                  packet_size += (int) length;
 
                   send (poll->sock, packet, packet_size, 0);
                 }
@@ -836,7 +836,7 @@ uvsocks_poll_read (uv_poll_t*  handle,
               case UVSOCKS_STAGE_ESTABLISHED:
                 {
                   char *packet = poll->buf;
-                  size_t packet_size;
+                  int packet_size;
                   unsigned short port;
                   struct sockaddr_in addr;
 
