@@ -87,10 +87,8 @@ struct _UvSocksForward
 
   char              *listen_host;
   int                listen_port;
-  char              *listen_path;
   char              *remote_host;
   int                remote_port;
-  char              *remote_path;
 
   UvSocksCmd         command;
   UvSocksPoll       *server;
@@ -187,9 +185,7 @@ uvsocks_remove_forward (UvSocks        *uvsocks,
     uvsocks->forwards = forward->next;
 
   g_free (forward->listen_host);
-  g_free (forward->listen_path);
   g_free (forward->remote_host);
-  g_free (forward->remote_path);
 
   g_free (forward);
 }
@@ -232,9 +228,7 @@ uvsocks_remove_reverse_forward (UvSocks        *uvsocks,
     uvsocks->reverse_forwards = forward->next;
 
   g_free (forward->listen_host);
-  g_free (forward->listen_path);
   g_free (forward->remote_host);
-  g_free (forward->remote_path);
 
   g_free (forward);
 }
@@ -629,10 +623,8 @@ void
 uvsocks_add_forward (UvSocks           *uvsocks,
                      char              *listen_host,
                      int                listen_port,
-                     char              *listen_path,
                      char              *remote_host,
                      int                remote_port,
-                     char              *remote_path,
                      UvSocksForwardFunc callback_func,
                      void              *callback_data)
 {
@@ -645,10 +637,8 @@ uvsocks_add_forward (UvSocks           *uvsocks,
   forward->command = UVSOCKS_CMD_CONNECT;
   forward->listen_host = g_strdup (listen_host);
   forward->listen_port = listen_port;
-  forward->listen_path = g_strdup (listen_path);
   forward->remote_host = g_strdup (remote_host);
   forward->remote_port = remote_port;
-  forward->remote_path = g_strdup (remote_path);
 
   forward->callback_func = callback_func;
   forward->callback_data = callback_data;
@@ -667,10 +657,8 @@ void
 uvsocks_add_reverse_forward (UvSocks           *uvsocks,
                              char              *listen_host,
                              int                listen_port,
-                             char              *listen_path,
                              char              *remote_host,
                              int                remote_port,
-                             char              *remote_path,
                              UvSocksForwardFunc callback_func,
                              void              *callback_data)
 {
@@ -683,10 +671,8 @@ uvsocks_add_reverse_forward (UvSocks           *uvsocks,
   forward->command = UVSOCKS_CMD_BIND;
   forward->listen_host = g_strdup (listen_host);
   forward->listen_port = listen_port;
-  forward->listen_path = g_strdup (listen_path);
   forward->remote_host = g_strdup (remote_host);
   forward->remote_port = remote_port;
-  forward->remote_path = g_strdup (remote_path);
 
   forward->callback_func = callback_func;
   forward->callback_data = callback_data;
@@ -838,6 +824,13 @@ uvsocks_local_alloc_buffer (uv_handle_t *handle,
   buf->len = UV_BUF_LEN (size);
 }
 
+static int
+uvsocks_local_start_read (UvSocksContext *context);
+
+static void
+uvsocks_reverse_forward (UvSocks *uvsocks,
+                         void    *data);
+
 static void
 uvsocks_local_connected (uv_connect_t *connect,
                          int           status)
@@ -898,13 +891,6 @@ uvsocks_connect_local (UvSocksForward *forward,
                        context);
   return 0;
 }
-
-static int
-uvsocks_local_start_read (UvSocksContext *context);
-
-static void
-uvsocks_reverse_forward (UvSocks *uvsocks,
-                         void    *data);
 
 static void
 uvsocks_remote_read (uv_stream_t    *stream,

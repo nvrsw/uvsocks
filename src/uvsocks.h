@@ -49,10 +49,8 @@ void
 uvsocks_add_forward (UvSocks           *uvsocks,
                      char              *listen_host,
                      int                listen_port,
-                     char              *listen_path,
                      char              *remote_host,
                      int                remote_port,
-                     char              *connect_path,
                      UvSocksForwardFunc callback_func,
                      void              *callback_data);
 
@@ -60,10 +58,8 @@ void
 uvsocks_add_reverse_forward (UvSocks           *uvsocks,
                              char              *listen_host,
                              int                listen_port,
-                             char              *listen_path,
                              char              *remote_host,
                              int                remote_port,
-                             char              *connect_path,
                              UvSocksForwardFunc callback_func,
                              void              *callback_data);
 
