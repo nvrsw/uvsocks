@@ -323,7 +323,8 @@ main_uvsocks_tunneled (UvSocks      *uvsocks,
                        UvSocksStatus status,
                        void         *data)
 {
-
+	fprintf (stderr,
+				  "main_uvsocks_tunneled: \n");
 }
 
 static void

@@ -41,14 +41,14 @@ uvsocks_free (UvSocks *uvsocks);
 typedef void (*UvSocksForwardFunc) (UvSocks      *uvsocks,
                                     char         *remote_host,
                                     int           remote_port,
-                                    char         *listen_host,
-                                    int           listen_port,
+                                    char         *local_host,
+                                    int           local_port,
                                     void         *data);
 
 void
 uvsocks_add_forward (UvSocks           *uvsocks,
-                     char              *listen_host,
-                     int                listen_port,
+                     char              *local_host,
+                     int                local_port,
                      char              *remote_host,
                      int                remote_port,
                      UvSocksForwardFunc callback_func,
@@ -56,8 +56,8 @@ uvsocks_add_forward (UvSocks           *uvsocks,
 
 void
 uvsocks_add_reverse_forward (UvSocks           *uvsocks,
-                             char              *listen_host,
-                             int                listen_port,
+                             char              *local_host,
+                             int                local_port,
                              char              *remote_host,
                              int                remote_port,
                              UvSocksForwardFunc callback_func,

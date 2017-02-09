@@ -90,8 +90,8 @@ struct _UvSocksForward
   UvSocksForward    *prev;
   UvSocksForward    *next;
 
-  char              *listen_host;
-  int                listen_port;
+  char              *local_host;
+  int                local_port;
   char              *remote_host;
   int                remote_port;
 
@@ -189,7 +189,7 @@ uvsocks_remove_forward (UvSocks        *uvsocks,
   if (forward == uvsocks->forwards)
     uvsocks->forwards = forward->next;
 
-  g_free (forward->listen_host);
+  g_free (forward->local_host);
   g_free (forward->remote_host);
 
   g_free (forward);
@@ -232,7 +232,7 @@ uvsocks_remove_reverse_forward (UvSocks        *uvsocks,
   if (forward == uvsocks->reverse_forwards)
     uvsocks->reverse_forwards = forward->next;
 
-  g_free (forward->listen_host);
+  g_free (forward->local_host);
   g_free (forward->remote_host);
 
   g_free (forward);
@@ -509,8 +509,8 @@ uvsocks_free (UvSocks *uvsocks)
 
 void
 uvsocks_add_forward (UvSocks           *uvsocks,
-                     char              *listen_host,
-                     int                listen_port,
+                     char              *local_host,
+                     int                local_port,
                      char              *remote_host,
                      int                remote_port,
                      UvSocksForwardFunc callback_func,
@@ -523,8 +523,8 @@ uvsocks_add_forward (UvSocks           *uvsocks,
     return;
 
   forward->command = UVSOCKS_CMD_CONNECT;
-  forward->listen_host = g_strdup (listen_host);
-  forward->listen_port = listen_port;
+  forward->local_host = g_strdup (local_host);
+  forward->local_port = local_port;
   forward->remote_host = g_strdup (remote_host);
   forward->remote_port = remote_port;
 
@@ -534,8 +534,8 @@ uvsocks_add_forward (UvSocks           *uvsocks,
   fprintf (stderr,
           "add forward: "
           "listen %s:%d -> %s:%d\n",
-           forward->listen_host,
-           forward->listen_port,
+           forward->local_host,
+           forward->local_port,
            forward->remote_host,
            forward->remote_port);
   uvsocks_add_forward0 (uvsocks, forward);
@@ -543,8 +543,8 @@ uvsocks_add_forward (UvSocks           *uvsocks,
 
 void
 uvsocks_add_reverse_forward (UvSocks           *uvsocks,
-                             char              *listen_host,
-                             int                listen_port,
+                             char              *local_host,
+                             int                local_port,
                              char              *remote_host,
                              int                remote_port,
                              UvSocksForwardFunc callback_func,
@@ -557,8 +557,8 @@ uvsocks_add_reverse_forward (UvSocks           *uvsocks,
     return;
 
   forward->command = UVSOCKS_CMD_BIND;
-  forward->listen_host = g_strdup (listen_host);
-  forward->listen_port = listen_port;
+  forward->local_host = g_strdup (local_host);
+  forward->local_port = local_port;
   forward->remote_host = g_strdup (remote_host);
   forward->remote_port = remote_port;
 
@@ -859,10 +859,10 @@ uvsocks_poll_read (uv_poll_t*  handle,
                     }
                   if (context->forward->command == UVSOCKS_CMD_BIND)
                     {
-                      uv_ip4_addr (context->forward->listen_host,
-                                   context->forward->listen_port,
+                      uv_ip4_addr (context->forward->local_host,
+                                   context->forward->local_port,
                                   &addr);
-                      port = htons (context->forward->listen_port);
+                      port = htons (context->forward->local_port);
                     }
 
                   memcpy (&packet[packet_size], &addr.sin_addr.S_un.S_addr, 4);
@@ -1281,17 +1281,17 @@ uvsocks_forward (UvSocks *uvsocks,
   UvSocksPoll *s;
   int port;
 
-  port = forward->listen_port;
+  port = forward->local_port;
   s = uvsocks_start_local_server (uvsocks,
-                                  forward->listen_host,
+                                  forward->local_host,
                                   &port);
   if (!s)
     {
       fprintf (stderr,
               "failed to forward -> "
               "local:%s:%d -> server:%s:%d  -> remote:%s:%d\n",
-               forward->listen_host,
-               forward->listen_port,
+               forward->local_host,
+               forward->local_port,
                uvsocks->host,
                uvsocks->port,
                forward->remote_host,
@@ -1306,14 +1306,14 @@ uvsocks_forward (UvSocks *uvsocks,
 
   forward->server = s;
   forward->server->handle.data = forward;
-  forward->listen_port = port;
+  forward->local_port = port;
 
   if (forward->callback_func)
     forward->callback_func (uvsocks,
                             forward->remote_host,
                             forward->remote_port,
-                            forward->listen_host,
-                            forward->listen_port,
+                            forward->local_host,
+                            forward->local_port,
                             forward->callback_data);
 }
 
@@ -1340,10 +1340,7 @@ static void
 uvsocks_tunnel_real (UvSocks  *uvsocks,
                      void     *data)
 {
-  UvSocksStatus status;
   UvSocksForward *l;
-
-  status = UVSOCKS_OK;
 
   for (l = uvsocks->reverse_forwards; l != NULL; l = l->next)
     uvsocks_send_async (uvsocks, uvsocks_reverse_forward, l, NULL);
