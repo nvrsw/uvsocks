@@ -372,7 +372,6 @@ uvsocks_close_socket (uv_os_sock_t sock)
       close (sock);
     }
 #endif
-
 }
 
 static void
@@ -1031,6 +1030,9 @@ uvsocks_poll_read (uv_poll_t*  handle,
                                                          port,
                                                          context->forward->callback_data);
                       uvsocks_remote_set_stage (context, UVSOCKS_STAGE_BIND);
+                      uvsocks_poll_read_start (context->remote,
+                                               UV_READABLE | UV_DISCONNECT,
+                                               uvsocks_poll_read);
                       break;
                     }
 
