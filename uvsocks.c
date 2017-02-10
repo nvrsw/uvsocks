@@ -6,14 +6,31 @@
  * Copyright (c) 2017 EMSTONE, All rights reserved.
  */
 
+#ifdef _MSC_VER
+#if _MSC_VER < 1900
+#define inline __inline
+#define snprintf _snprintf
+#endif
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
+#ifdef _WIN32
+#define strdup(x) _strdup(x)
+#endif
+
 #include "uvsocks.h"
 #include "aqueue.h"
 #include <uv.h>
-#include <glib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <memory.h>
 #include <string.h>
 #include <limits.h>
+
+#ifdef linux
+#include <sys/prctl.h>
+#include <unistd.h>
+#endif
 
 #define UVSOCKS_BUF_MAX (1024 * 1024)
 
@@ -114,7 +131,6 @@ struct _UvSocksContext
   UvSocksPoll      *local;
 };
 
-typedef struct _UvSocks UvSocks;
 struct _UvSocks
 {
   uv_loop_t              loop;
@@ -189,10 +205,9 @@ uvsocks_remove_forward (UvSocks        *uvsocks,
   if (forward == uvsocks->forwards)
     uvsocks->forwards = forward->next;
 
-  g_free (forward->local_host);
-  g_free (forward->remote_host);
-
-  g_free (forward);
+  free (forward->local_host);
+  free (forward->remote_host);
+  free (forward);
 }
 
 static void
@@ -232,10 +247,9 @@ uvsocks_remove_reverse_forward (UvSocks        *uvsocks,
   if (forward == uvsocks->reverse_forwards)
     uvsocks->reverse_forwards = forward->next;
 
-  g_free (forward->local_host);
-  g_free (forward->remote_host);
-
-  g_free (forward);
+  free (forward->local_host);
+  free (forward->remote_host);
+  free (forward);
 }
 
 static void
@@ -293,7 +307,7 @@ uvset_thread_name (const char *name)
 {
   char thread_name[17];
 
-  snprintf (thread_name, sizeof (thread_name), "%s-%s", PACKAGE, name);
+  snprintf (thread_name, sizeof (thread_name), ":%s", name);
 #ifdef linux
   prctl (PR_SET_NAME, (unsigned long) thread_name, 0, 0, 0);
 #endif
@@ -314,11 +328,11 @@ uvsocks_new (void)
 {
   UvSocks *uvsocks;
 
-  uvsocks = g_new0 (UvSocks, 1);
+  uvsocks = calloc (sizeof (UvSocks), 1);
   if (!uvsocks)
     return NULL;
 
-  int iret = uv_loop_init (&uvsocks->loop);
+  uv_loop_init (&uvsocks->loop);
   uvsocks->queue = aqueue_new (128);
   uv_async_init (&uvsocks->loop, &uvsocks->async, uvsocks_receive_async);
   uvsocks->async.data = uvsocks;
@@ -411,7 +425,7 @@ uvsocks_remove_context (UvSocks        *uvsocks,
     }
 
   uv_mutex_destroy (&context->mutex);
-  g_free (context);
+  free (context);
 }
 
 static void
@@ -428,13 +442,13 @@ uvsocks_create_context (UvSocksForward *forward)
   UvSocksPoll *local;
   UvSocksPoll *remote;
 
-  context = g_new0 (UvSocksContext, 1);
+  context = calloc (sizeof (UvSocksContext), 1);
   if (!context)
     return NULL;
   local =  malloc (sizeof (*local));
   if (!local)
     {
-      g_free (context);
+      free (context);
       return NULL;
     }
   local->buf = malloc (UVSOCKS_BUF_MAX);
@@ -451,7 +465,7 @@ uvsocks_create_context (UvSocksForward *forward)
   if (!remote)
     {
       free (local);
-      g_free (context);
+      free (context);
       return NULL;
     }
   remote->buf = malloc (UVSOCKS_BUF_MAX);
@@ -501,10 +515,10 @@ uvsocks_free (UvSocks *uvsocks)
   uvsocks_free_forward (uvsocks);
   uvsocks_free_reverse_forward (uvsocks);
 
-  g_free (uvsocks->host);
-  g_free (uvsocks->user);
-  g_free (uvsocks->password);
-  g_free (uvsocks);
+  free (uvsocks->host);
+  free (uvsocks->user);
+  free (uvsocks->password);
+  free (uvsocks);
 }
 
 void
@@ -518,14 +532,14 @@ uvsocks_add_forward (UvSocks           *uvsocks,
 {
   UvSocksForward *forward;
 
-  forward = g_new0 (UvSocksForward, 1);
+  forward = calloc (sizeof (UvSocksForward), 1);
   if (!forward)
     return;
 
   forward->command = UVSOCKS_CMD_CONNECT;
-  forward->local_host = g_strdup (local_host);
+  forward->local_host = strdup (local_host);
   forward->local_port = local_port;
-  forward->remote_host = g_strdup (remote_host);
+  forward->remote_host = strdup (remote_host);
   forward->remote_port = remote_port;
 
   forward->callback_func = callback_func;
@@ -552,14 +566,14 @@ uvsocks_add_reverse_forward (UvSocks           *uvsocks,
 {
   UvSocksForward *forward;
 
-  forward = g_new0 (UvSocksForward, 1);
+  forward = calloc (sizeof (UvSocksForward), 1);
   if (!forward)
     return;
 
   forward->command = UVSOCKS_CMD_BIND;
-  forward->local_host = g_strdup (local_host);
+  forward->local_host = strdup (local_host);
   forward->local_port = local_port;
-  forward->remote_host = g_strdup (remote_host);
+  forward->remote_host = strdup (remote_host);
   forward->remote_port = remote_port;
 
   forward->callback_func = callback_func;
@@ -658,8 +672,8 @@ done:
 
 static void
 uvsocks_dns_resolve (UvSocks              *uvsocks,
-                     char                 *host,
-                     char                 *port,
+                     const char           *host,
+                     int                   port,
                      UvSocksDnsResolveFunc func,
                      void                 *data)
 {
@@ -667,11 +681,12 @@ uvsocks_dns_resolve (UvSocks              *uvsocks,
   UvSocksDnsResolve *d;
   uv_getaddrinfo_t *resolver;
   struct addrinfo hints;
+  char service[16];
   int status;
 
-  hints.ai_family = PF_INET; 
-  hints.ai_socktype = SOCK_STREAM; 
-  hints.ai_protocol = IPPROTO_TCP; 
+  hints.ai_family = PF_INET;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_protocol = IPPROTO_TCP;
   hints.ai_flags = 0;
 
   resolver = malloc (sizeof (*resolver));
@@ -681,9 +696,10 @@ uvsocks_dns_resolve (UvSocks              *uvsocks,
   if (!d)
     {
       free (resolver);
-      g_free (port);
       return;
     }
+
+  snprintf (service, sizeof service, "%d", port);
 
   d->data = data;
   d->func = func;
@@ -693,7 +709,7 @@ uvsocks_dns_resolve (UvSocks              *uvsocks,
                            resolver,
                            uvsocks_dns_resolved,
                            host,
-                           port,
+                           service,
                            &hints);
   if (status)
     {
@@ -708,7 +724,6 @@ uvsocks_dns_resolve (UvSocks              *uvsocks,
       uvsocks_remove_context (uvsocks, context);
       free (resolver);
     }
-  g_free (port);
 }
 
 static int
@@ -772,7 +787,7 @@ uvsocks_poll_read (uv_poll_t*  handle,
   if (events & UV_WRITABLE)
     {
       int sent;
-      
+
       if (context->stage == UVSOCKS_STAGE_TUNNELED)
         {
           uv_mutex_lock (&context->mutex);
@@ -794,8 +809,10 @@ uvsocks_poll_read (uv_poll_t*  handle,
         {
           switch (context->stage)
             {
+              case UVSOCKS_STAGE_TUNNEL:
+                break;
               case UVSOCKS_STAGE_NONE:
-              break;
+                break;
               case UVSOCKS_STAGE_CONNECTED:
                 {
                   char *packet = poll->buf;
@@ -811,7 +828,7 @@ uvsocks_poll_read (uv_poll_t*  handle,
                 }
                 break;
               case UVSOCKS_STAGE_AUTHENTICATE:
-              break;
+                break;
               case UVSOCKS_STAGE_AUTHENTICATED:
                 {
                   char *packet = poll->buf;
@@ -835,7 +852,7 @@ uvsocks_poll_read (uv_poll_t*  handle,
                 }
                 break;
               case UVSOCKS_STAGE_ESTABLISH:
-              break;
+                break;
               case UVSOCKS_STAGE_ESTABLISHED:
                 {
                   char *packet = poll->buf;
@@ -865,7 +882,7 @@ uvsocks_poll_read (uv_poll_t*  handle,
                       port = htons (context->forward->local_port);
                     }
 
-                  memcpy (&packet[packet_size], &addr.sin_addr.S_un.S_addr, 4);
+                  memcpy (&packet[packet_size], &addr.sin_addr.s_addr, 4);
                   packet_size += 4;
                   memcpy (&packet[packet_size], &port, 2);
                   packet_size += 2;
@@ -1164,7 +1181,7 @@ uvsocks_connect_remote (UvSocksForward *forward,
 {
   uvsocks_dns_resolve (forward->uvsocks,
                        host,
-                       g_strdup_printf("%i", port),
+                       port,
                        uvsocks_connect_remote_real,
                        context);
   return 0;
@@ -1188,7 +1205,7 @@ uvsocks_local_new_connection (uv_poll_t *handle,
   if (sock == INVALID_SOCKET)
     return;
 #else
-  if (s < 0)
+  if (sock < 0)
     return;
 #endif
 
@@ -1216,7 +1233,7 @@ uvsocks_start_local_server (UvSocks    *uvsocks,
   UvSocksPoll *server;
   struct sockaddr_in addr;
   struct sockaddr_in name;
-  int namelen;
+  socklen_t namelen;
   int r;
 
   if (*port < 0 || *port > 65535)
@@ -1237,7 +1254,7 @@ uvsocks_start_local_server (UvSocks    *uvsocks,
   {
     /* Allow reuse of the port. */
     int yes = 1;
-    r = setsockopt (server->sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof (yes);
+    r = setsockopt (server->sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof (yes));
     if (r)
       return NULL;
   }
@@ -1252,7 +1269,7 @@ uvsocks_start_local_server (UvSocks    *uvsocks,
                            server->sock);
   server->handle.data = server;
 
-  namelen = sizeof(name);
+  namelen = sizeof (name);
   getsockname (server->sock, (struct sockaddr *)&name, &namelen);
   *port = ntohs (name.sin_port);
 
@@ -1365,10 +1382,10 @@ uvsocks_tunnel (UvSocks           *uvsocks,
            port,
            user);
 
-  uvsocks->host = g_strdup (host);
+  uvsocks->host = strdup (host);
   uvsocks->port = port;
-  uvsocks->user = g_strdup (user);
-  uvsocks->password = g_strdup (password);
+  uvsocks->user = strdup (user);
+  uvsocks->password = strdup (password);
 
   uvsocks->callback_func = callback_func;
   uvsocks->callback_data = callback_data;

@@ -6,13 +6,23 @@
  * Copyright (c) 2017 EMSTONE, All rights reserved.
  */
 
+#ifdef _MSC_VER
+#if _MSC_VER < 1900
+#define inline __inline
+#define snprintf _snprintf
+#endif
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
+#ifdef _WIN32
+#define strdup(x) _strdup(x)
+#endif
+
 #include "uvsocks.h"
 #include <uv.h>
-#include <glib.h>
 #include <stdio.h>
 #include <memory.h>
 #include <string.h>
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <ctype.h>
@@ -41,6 +51,14 @@ extern char *optarg;
 extern int optind;
 extern int optreset;
 
+static uv_loop_t  *main_loop;
+static UvSocks    *main_uvsocks;
+static uv_signal_t sigint;
+static uv_signal_t sigterm;
+static uv_signal_t sighup;
+
+static void main_exit (void);
+
 int
 getopt (int         nargc,
         char *const nargv[],
@@ -56,11 +74,14 @@ main_usage (void)
           "               [-a password]\n"
           "               [-p port]\n"
           "               [user:password@]hostname [command]\n"
-          ""
-          ""
-          "example:"
-          "uvsocks -L 1234:192.168.0.231:8000 -R 5824:192.168.0.231:8000 user:password@192.168.0.15:1080"
-          "uvsocks -L 1234:192.168.0.231:8000 -R 5824:192.168.0.231:8000 192.168.0.15 -l user -a password -p 1080"
+          "\n"
+          "example:\n"
+          "  uvsocks -L 1234:192.168.0.231:8000 \\\n"
+          "          -R 5824:192.168.0.231:8000 \\\n"
+          "          user:password@192.168.0.15:1080\n"
+          "  uvsocks -L 1234:192.168.0.231:8000 \\\n"
+          "          -R 5824:192.168.0.231:8000 \\\n"
+          "          192.168.0.15 -l user -a password -p 1080\n"
 	        );
 }
 
@@ -143,7 +164,7 @@ main_parse_forward (const char *forwardspec,
 
 	memset (forwardargs, 0, sizeof (forwardargs));
 
-	cp = p = g_strdup (forwardspec);
+	cp = p = strdup (forwardspec);
 
 	/* skip leading spaces */
 	while (isspace ((unsigned char) *cp))
@@ -164,7 +185,7 @@ main_parse_forward (const char *forwardspec,
 	  case 1:
 		  if (forwardargs[0].ispath)
         {
-			    *listen_path = g_strdup (forwardargs[0].arg);
+			    *listen_path = strdup (forwardargs[0].arg);
 			    *listen_port = PORT_STREAMLOCAL;
 		    }
       else
@@ -172,64 +193,64 @@ main_parse_forward (const char *forwardspec,
 			    *listen_host = NULL;
 			    *listen_port = (int) strtol (forwardargs[0].arg, (char **) NULL, 10);
 		    }
-		  *remote_host = g_strdup ("socks");
+		  *remote_host = strdup ("socks");
 		  break;
 	  case 2:
 		  if (forwardargs[0].ispath && forwardargs[1].ispath)
         {
-			    *listen_path = g_strdup (forwardargs[0].arg);
+			    *listen_path = strdup (forwardargs[0].arg);
 			    *listen_port = PORT_STREAMLOCAL;
-			    *remote_path = g_strdup (forwardargs[1].arg);
+			    *remote_path = strdup (forwardargs[1].arg);
 			    *remote_port = PORT_STREAMLOCAL;
 		    }
       else if (forwardargs[1].ispath)
         {
 			    *listen_host = NULL;
 			    *listen_port = (int) strtol (forwardargs[0].arg, (char **) NULL, 10);
-			    *remote_path = g_strdup (forwardargs[1].arg);
+			    *remote_path = strdup (forwardargs[1].arg);
 			    *remote_port = PORT_STREAMLOCAL;
 		    }
       else
         {
-			    *listen_host = g_strdup (forwardargs[0].arg);
+			    *listen_host = strdup (forwardargs[0].arg);
 			    *listen_port = (int) strtol (forwardargs[1].arg, (char **) NULL, 10);
-			    *remote_host = g_strdup ("socks");
+			    *remote_host = strdup ("socks");
 		    }
 		  break;
 	  case 3:
 		  if (forwardargs[0].ispath)
         {
-			    *listen_path = g_strdup (forwardargs[0].arg);
+			    *listen_path = strdup (forwardargs[0].arg);
 			    *listen_port = PORT_STREAMLOCAL;
-			    *remote_host = g_strdup (forwardargs[1].arg);
+			    *remote_host = strdup (forwardargs[1].arg);
 			    *remote_port = (int) strtol (forwardargs[2].arg, (char **) NULL, 10);
 		    }
       else if (forwardargs[2].ispath)
         {
-			    *listen_host = g_strdup (forwardargs[0].arg);
+			    *listen_host = strdup (forwardargs[0].arg);
 			    *listen_port = (int) strtol (forwardargs[1].arg, (char **) NULL, 10);
-			    *remote_path = g_strdup (forwardargs[2].arg);
+			    *remote_path = strdup (forwardargs[2].arg);
 			    *remote_port = PORT_STREAMLOCAL;
 		    }
       else
         {
 			    *listen_host = NULL;
 			    *listen_port = (int) strtol (forwardargs[0].arg, (char **) NULL, 10);
-			    *remote_host = g_strdup (forwardargs[1].arg);
+			    *remote_host = strdup (forwardargs[1].arg);
 			    *remote_port = (int) strtol (forwardargs[2].arg, (char **) NULL, 10);
 		    }
 		  break;
 	  case 4:
-		  *listen_host = g_strdup (forwardargs[0].arg);
+		  *listen_host = strdup (forwardargs[0].arg);
 		  *listen_port = (int)strtol (forwardargs[1].arg, (char **) NULL, 10);
-		  *remote_host = g_strdup (forwardargs[2].arg);
+		  *remote_host = strdup (forwardargs[2].arg);
 		  *remote_port = (int)strtol (forwardargs[3].arg, (char **) NULL, 10);
 		  break;
 	  default:
 		  i = 0; /* failure */
 	  }
 
-	g_free (p);
+	free (p);
 
 	if (dynamicforward)
     {
@@ -268,23 +289,16 @@ main_parse_forward (const char *forwardspec,
 	return (i);
 
  fail_free:
-	g_free (*remote_host);
+	free (*remote_host);
 	*remote_host = NULL;
-	g_free (*remote_path);
+	free (*remote_path);
 	*remote_path = NULL;
-	g_free (*listen_host);
+	free (*listen_host);
 	*listen_host = NULL;
-	g_free (*listen_path);
+	free (*listen_path);
 	*listen_path = NULL;
 	return (0);
 }
-
-static void       *loop;
-static uv_signal_t sigint;
-static uv_signal_t sigterm;
-static uv_signal_t sighup;
-
-static void main_exit (void);
 
 static void
 main_handle_signals (uv_signal_t *handle,
@@ -316,8 +330,6 @@ main_cleanup (void)
   uv_signal_stop (&sighup);
 }
 
-static UvSocks *uvsocks;
-
 static void
 main_uvsocks_tunneled (UvSocks      *uvsocks,
                        UvSocksStatus status,
@@ -346,7 +358,7 @@ main_uvsocks_forwarded (UvSocks      *uvsocks,
 static void
 main_init (void)
 {
-  uvsocks = uvsocks_new ();
+  main_uvsocks = uvsocks_new ();
 }
 
 static int
@@ -357,7 +369,6 @@ main_tunnel (int    ac,
 	int opt;
 	char *p;
 	char *cp;
-	char *argv0;
   char *host;
   int port;
   char *user;
@@ -374,8 +385,6 @@ main_tunnel (int    ac,
   port = 1080;
   user = NULL;
   password = NULL;
-
-  argv0 = av[0];
 
 again:
   while ((opt = getopt (ac,
@@ -400,10 +409,10 @@ again:
 			    }
 			  break;
 		  case 'l':
-			  user = g_strdup (optarg);
+			  user = strdup (optarg);
 			  break;
 		  case 'a':
-			  password = g_strdup (optarg);
+			  password = strdup (optarg);
 			  break;
 		  case 'L':
 			  if (main_parse_forward (optarg, 0, 0,
@@ -413,7 +422,7 @@ again:
                                 &remote_host,
                                 &remote_port,
                                 &remote_path))
-				  uvsocks_add_forward (uvsocks,
+				  uvsocks_add_forward (main_uvsocks,
                                listen_host ? listen_host : "0.0.0.0",
                                listen_port,
                                remote_host ? remote_host : "0.0.0.0",
@@ -433,7 +442,7 @@ again:
                                 &remote_host,
                                 &remote_port,
                                 &remote_path))
-          uvsocks_add_reverse_forward (uvsocks,
+          uvsocks_add_reverse_forward (main_uvsocks,
                                        listen_host ? listen_host : "0.0.0.0",
                                        listen_port,
                                        remote_host ? remote_host : "0.0.0.0",
@@ -452,10 +461,10 @@ again:
         break;
 		  }
 
-    g_free (listen_host);
-    g_free (listen_path);
-    g_free (remote_host);
-    g_free (remote_path);
+    free (listen_host);
+    free (listen_path);
+    free (remote_host);
+    free (remote_path);
   }
 	
   ac -= optind;
@@ -465,24 +474,24 @@ again:
     {
 		  if (strrchr(*av, '@'))
         {
-			    p = g_strdup (*av);
+			    p = strdup (*av);
 			    cp = strrchr(p, '@');
 			    if (cp == NULL || cp == p)
 				    main_usage();
 			    user = p;
 			    *cp = '\0';
-			    host = g_strdup (++cp);
+			    host = strdup (++cp);
 
           if (strrchr(user, ':'))
             {
               cp = strrchr(user, ':');
 			        user = p;
 			        *cp = '\0';
-			        password = g_strdup (++cp);
+			        password = strdup (++cp);
             }
 		    }
       else
-			  host = g_strdup (*av);
+			  host = strdup (*av);
 
       if (strrchr(host, ':'))
         {
@@ -513,24 +522,24 @@ again:
       ret = 1;
     }
   else
-    ret =  uvsocks_tunnel (uvsocks,
+    ret =  uvsocks_tunnel (main_uvsocks,
                            host ? host : "",
                            port,
                            user ? user : "",
                            password ? password : "",
                            main_uvsocks_tunneled,
-                           uvsocks);
+                           main_uvsocks);
 
-  g_free (host);
-  g_free (user);
-  g_free (password);
+  free (host);
+  free (user);
+  free (password);
   return ret;
 }
 
 void
 main_exit (void)
 {
-  uvsocks_free (uvsocks);
+  uvsocks_free (main_uvsocks);
 
   main_cleanup ();
 }
@@ -542,14 +551,14 @@ main (int    argc,
   /* Some uv_fs_*() functions use WIN32 API initialized at uv__once_init() in
      WIN32. Call uv_hrtime() to execute uv_once_init() internally. */
   uv_hrtime ();
-  loop = uv_default_loop ();
-  main_setup (loop);
+  main_loop = uv_default_loop ();
+  main_setup (main_loop);
   main_init ();
   if (main_tunnel (argc, argv))
     goto fail;
-  uv_run (loop, UV_RUN_DEFAULT);
+  uv_run (main_loop, UV_RUN_DEFAULT);
 fail:
   main_exit ();
-  uv_loop_close (loop);
+  uv_loop_close (main_loop);
   return EXIT_SUCCESS;
 }
