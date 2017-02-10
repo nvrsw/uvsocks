@@ -18,15 +18,15 @@
     <Text Include="README.md" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\main.c">
+    <ClCompile Include="main.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\getopt.c">
+    <ClCompile Include="getopt.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <Image Include="image\uvsocks.ico">
+    <Image Include="uvsocks.ico">
       <Filter>Resource Files</Filter>
     </Image>
   </ItemGroup>

@@ -18,18 +18,18 @@
     <Text Include="README.md" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\uvsocks.c">
+    <ClCompile Include="uvsocks.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\aqueue.c">
+    <ClCompile Include="aqueue.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\uvsocks.h">
+    <ClInclude Include="uvsocks.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\aqueue.h">
+    <ClInclude Include="aqueue.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

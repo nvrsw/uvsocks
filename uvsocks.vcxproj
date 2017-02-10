@@ -173,11 +173,11 @@
     <Text Include="README.md" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\getopt.c" />
-    <ClCompile Include="src\main.c" />
+    <ClCompile Include="getopt.c" />
+    <ClCompile Include="main.c" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="image\uvsocks.ico" />
+    <Image Include="uvsocks.ico" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="uvsocks.rc" />

@@ -157,12 +157,12 @@
     <Text Include="README.md" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\aqueue.c" />
-    <ClCompile Include="src\uvsocks.c" />
+    <ClCompile Include="aqueue.c" />
+    <ClCompile Include="uvsocks.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\aqueue.h" />
-    <ClInclude Include="src\uvsocks.h" />
+    <ClInclude Include="aqueue.h" />
+    <ClInclude Include="uvsocks.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
