@@ -1,0 +1,89 @@
+#!/bin/sh
+
+echo "ninja_required_version = 1.5"
+echo ""
+
+# libuv
+echo "libuv_cflags = $(pkg-config --cflags libuv)"
+echo "libuv_libs = $(pkg-config --libs libuv)"
+
+echo '
+cc = gcc
+cp = cp -af
+cxx = g++
+ar = ar
+
+cppflags = $
+  -DNDEBUG $
+  -D_REENTRANT $
+  -D_LIBC_REENTRANT $
+  -D_THREAD_SAFE $
+  -D_FORTIFY_SOURCE=1
+
+ccflags = $cppflags $
+  -O3 $
+  -pipe $
+  -g $
+  -fvar-tracking-assignments $
+  -Wall $
+  -Wextra $
+  -Wunused $
+  -Wshadow $
+  -Wno-deprecated $
+  -Wno-missing-field-initializers $
+  -Wno-unused-parameter $
+  -Wdisabled-optimization $
+  -Wpointer-arith $
+  -Wredundant-decls $
+  -Wno-sign-compare $
+  -Wformat-security $
+  -ffast-math $
+  -funroll-loops $
+  -fno-common $
+  $libuv_cflags
+
+cflags = $ccflags $
+  -Wdeclaration-after-statement
+
+cxxflags = $ccflags $
+  -fno-rtti $
+  -fno-exceptions
+
+ldflags = $
+  -Wl,-O1,--sort-common,--as-needed,-z,relro,--eh-frame-hdr $
+  -rdynamic
+
+libs = $
+  $libuv_libs
+
+rule cc
+  command = $cc -MMD -MT $out -MF $out.d $cflags -c -o $out $in
+  description = CC $out
+  depfile = $out.d
+  deps = gcc
+
+rule cxx
+  command = $cxx -MMD -MT $out -MF $out.d $cxxflags -c -o $out $in
+  description = CXX $out
+  depfile = $out.d
+  deps = gcc
+
+rule ar
+  command = rm -f $out && $ar crs $out $in
+  description = AR rcs $out
+
+rule link
+  command = $cxx $ldflags -o $out $in $libs
+  description = LINK $out
+
+build aqueue.o : cc aqueue.c
+build getopt.o : cc getopt.c
+build main.o : cc main.c
+build uvsocks.o : cc uvsocks.c
+
+build uvsocks : link $
+  aqueue.o $
+  getopt.o $
+  main.o $
+  uvsocks.o
+'
