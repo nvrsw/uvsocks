@@ -4,8 +4,22 @@ echo "ninja_required_version = 1.5"
 echo ""
 
 # libuv
-echo "libuv_cflags = $(pkg-config --cflags libuv)"
-echo "libuv_libs = $(pkg-config --libs libuv)"
+echo '
+libuv = libuv
+libuv_cflags = -I$libuv/include
+libuv_libs = -L$libuv/.libs -luv -lpthread
+libuv_deps = $libuv/.libs/libuv.a
+rule libuv_configure
+  command = cd $libuv && ./autogen.sh && ./configure --disable-shared --enable-static
+  generator = 1
+  pool = console
+build $libuv/Makefile: libuv_configure
+rule libuv_make
+  command = make --no-print-directory -C $libuv
+  generator = 1
+  pool = console
+build $libuv_deps: libuv_make || $libuv/Makefile
+'
 
 echo '
 cc = gcc
@@ -73,7 +87,7 @@ rule ar
   description = AR rcs $out
 
 rule link
-  command = $cxx $ldflags -o $out $in $libs
+  command = $cc $ldflags -o $out $in $libs
   description = LINK $out
 
 build aqueue.o : cc aqueue.c
@@ -85,5 +99,5 @@ build uvsocks : link $
   aqueue.o $
   getopt.o $
   main.o $
-  uvsocks.o
+  uvsocks.o || $libuv_deps
 '
