@@ -133,10 +133,9 @@ struct _UvSocksContext
 
 struct _UvSocks
 {
-  uv_loop_t              loop;
+  uv_loop_t             *loop;
   AQueue                *queue;
   uv_async_t             async;
-  uv_thread_t            thread;
 
   char                  *host;
   int                    port;
@@ -271,7 +270,7 @@ uvsocks_receive_async (uv_async_t *handle)
     {
       UvSocksMessage *msg;
 
-      msg = aqueue_pop (uvsocks->queue);
+      msg = aqueue_try_pop (uvsocks->queue);
       if (!msg)
         break;
 
@@ -302,50 +301,24 @@ uvsocks_send_async (UvSocks      *uvsocks,
   uv_async_send (&uvsocks->async);
 }
 
-void
-uvset_thread_name (const char *name)
-{
-  char thread_name[17];
-
-  snprintf (thread_name, sizeof (thread_name), ":%s", name);
-#ifdef linux
-  prctl (PR_SET_NAME, (unsigned long) thread_name, 0, 0, 0);
-#endif
-}
-
-static void
-uvsocks_thread_main (void *arg)
-{
-  UvSocks *uvsocks = arg;
-
-  uvset_thread_name ("uvsocks");
-
-  uv_run (&uvsocks->loop, UV_RUN_DEFAULT);
-}
-
 UvSocks *
-uvsocks_new (void)
+uvsocks_new (void *uv_loop)
 {
   UvSocks *uvsocks;
+
+  if (!uv_loop)
+    uv_loop = uv_default_loop ();
 
   uvsocks = calloc (sizeof (UvSocks), 1);
   if (!uvsocks)
     return NULL;
 
-  uv_loop_init (&uvsocks->loop);
+  uvsocks->loop = uv_loop;
   uvsocks->queue = aqueue_new (128);
-  uv_async_init (&uvsocks->loop, &uvsocks->async, uvsocks_receive_async);
+  uv_async_init (uvsocks->loop, &uvsocks->async, uvsocks_receive_async);
   uvsocks->async.data = uvsocks;
-  uv_thread_create (&uvsocks->thread, uvsocks_thread_main, uvsocks);
 
   return uvsocks;
-}
-
-static void
-uvsocks_quit (UvSocks  *uvsocks,
-              void     *data)
-{
-  uv_stop (&uvsocks->loop);
 }
 
 static void
@@ -506,10 +479,7 @@ uvsocks_free (UvSocks *uvsocks)
   if (!uvsocks)
     return;
 
-  uvsocks_send_async (uvsocks, uvsocks_quit, NULL, NULL);
-  uv_thread_join (&uvsocks->thread);
   uv_close ((uv_handle_t *) &uvsocks->async, NULL);
-  uv_loop_close (&uvsocks->loop);
 
   uvsocks_free_context (uvsocks);
   uvsocks_free_forward (uvsocks);

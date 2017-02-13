@@ -33,7 +33,7 @@ typedef enum _UvSocksStatus
 typedef struct _UvSocks UvSocks;
 
 UvSocks *
-uvsocks_new (void);
+uvsocks_new (void *uv_loop);
 
 void
 uvsocks_free (UvSocks *uvsocks);

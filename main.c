@@ -304,9 +304,9 @@ static void
 main_handle_signals (uv_signal_t *handle,
                      int          signum)
 {
-  fprintf (stderr, "main: signal[%d] received", signum);
+  fprintf (stderr, "main: signal[%d] received\n", signum);
 
-  main_exit ();
+  uv_stop (main_loop);
 }
 
 static void
@@ -353,12 +353,6 @@ main_uvsocks_forwarded (UvSocks      *uvsocks,
            listen_port,
            remote_host,
            remote_port);
-}
-
-static void
-main_init (void)
-{
-  main_uvsocks = uvsocks_new ();
 }
 
 static int
@@ -539,9 +533,8 @@ again:
 void
 main_exit (void)
 {
-  uvsocks_free (main_uvsocks);
-
   main_cleanup ();
+  uvsocks_free (main_uvsocks);
 }
 
 int
@@ -553,7 +546,7 @@ main (int    argc,
   uv_hrtime ();
   main_loop = uv_default_loop ();
   main_setup (main_loop);
-  main_init ();
+  main_uvsocks = uvsocks_new (main_loop);
   if (main_tunnel (argc, argv))
     goto fail;
   uv_run (main_loop, UV_RUN_DEFAULT);
