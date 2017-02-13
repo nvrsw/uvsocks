@@ -1,10 +1,5 @@
 /* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*-
    vim: set autoindent expandtab shiftwidth=2 softtabstop=2 tabstop=2: */
-/*
- * main.c
- *
- * Copyright (c) 2017 EMSTONE, All rights reserved.
- */
 
 #ifdef _MSC_VER
 #if _MSC_VER < 1900
