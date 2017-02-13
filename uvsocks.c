@@ -709,6 +709,7 @@ uvsocks_poll_read (uv_poll_t*  handle,
   UvSocksPoll *write = poll->write;
   UvSocksContext *context = poll->context;
   UvSocks *uvsocks = context->uvsocks;
+  UvSocksForward *forward = context->forward;
 
   if (status < 0 )
     {
@@ -717,8 +718,8 @@ uvsocks_poll_read (uv_poll_t*  handle,
                uvsocks->user,
                uvsocks->host,
                uvsocks->port,
-               context->forward->remote_host,
-               context->forward->remote_port,
+               forward->remote_host,
+               forward->remote_port,
                status,
                events);
       if (uvsocks->callback_func)
@@ -736,16 +737,16 @@ uvsocks_poll_read (uv_poll_t*  handle,
                uvsocks->user,
                uvsocks->host,
                uvsocks->port,
-               context->forward->remote_host,
-               context->forward->remote_port,
+               forward->remote_host,
+               forward->remote_port,
                status,
                events);
 
       uvsocks_remove_context (uvsocks, context);
-      if (poll->context->forward->command == UVSOCKS_CMD_BIND)
+      if (forward->command == UVSOCKS_CMD_BIND)
         uvsocks_send_async (uvsocks,
                             uvsocks_reverse_forward,
-                            context->forward, NULL);
+                            forward, NULL);
       return;
     }
 
@@ -828,23 +829,23 @@ uvsocks_poll_read (uv_poll_t*  handle,
                   uvsocks_remote_set_stage (context, UVSOCKS_STAGE_TUNNEL);
                   packet_size = 0;
                   packet[packet_size++] = UVSOCKS_VER_5;
-                  packet[packet_size++] = context->forward->command;
+                  packet[packet_size++] = forward->command;
                   packet[packet_size++] = 0x00;
                   packet[packet_size++] = UVSOCKS_ADDR_TYPE_IPV4;
 
-                  if (context->forward->command == UVSOCKS_CMD_CONNECT)
+                  if (forward->command == UVSOCKS_CMD_CONNECT)
                     {
-                      uv_ip4_addr (context->forward->remote_host,
-                                   context->forward->remote_port,
+                      uv_ip4_addr (forward->remote_host,
+                                   forward->remote_port,
                                   &addr);
-                      port = htons (context->forward->remote_port);
+                      port = htons (forward->remote_port);
                     }
-                  if (context->forward->command == UVSOCKS_CMD_BIND)
+                  if (forward->command == UVSOCKS_CMD_BIND)
                     {
-                      uv_ip4_addr (context->forward->local_host,
-                                   context->forward->local_port,
+                      uv_ip4_addr (forward->local_host,
+                                   forward->local_port,
                                   &addr);
-                      port = htons (context->forward->local_port);
+                      port = htons (forward->local_port);
                     }
 
                   memcpy (&packet[packet_size], &addr.sin_addr.s_addr, 4);
@@ -910,10 +911,10 @@ uvsocks_poll_read (uv_poll_t*  handle,
                                                          UVSOCKS_ERROR_HANDSHAKE,
                                                          context->uvsocks->callback_data);
                       uvsocks_remove_context (uvsocks, poll->context);
-                      if (context->forward->command == UVSOCKS_CMD_BIND)
+                      if (forward->command == UVSOCKS_CMD_BIND)
                         uvsocks_send_async (uvsocks,
                                             uvsocks_reverse_forward,
-                                            context->forward, NULL);
+                                            forward, NULL);
                       return;
                     }
 
@@ -943,10 +944,10 @@ uvsocks_poll_read (uv_poll_t*  handle,
                                                          UVSOCKS_ERROR_AUTH,
                                                          context->uvsocks->callback_data);
                       uvsocks_remove_context (uvsocks, poll->context);
-                      if (context->forward->command == UVSOCKS_CMD_BIND)
+                      if (forward->command == UVSOCKS_CMD_BIND)
                         uvsocks_send_async (uvsocks,
                                             uvsocks_reverse_forward,
-                                            context->forward, NULL);
+                                            forward, NULL);
                       return;
                     }
 
@@ -976,30 +977,30 @@ uvsocks_poll_read (uv_poll_t*  handle,
                                                           UVSOCKS_ERROR_CONNECT,
                                                           context->uvsocks->callback_data);
                       uvsocks_remove_context (uvsocks, poll->context);
-                      if (context->forward->command == UVSOCKS_CMD_BIND)
+                      if (forward->command == UVSOCKS_CMD_BIND)
                         uvsocks_send_async (uvsocks,
                                             uvsocks_reverse_forward,
-                                            context->forward, NULL);
+                                            forward, NULL);
                       return;
                     }
 
                   poll->read -= 10;
 
                   if (context->stage == UVSOCKS_STAGE_TUNNEL &&
-                      context->forward->command == UVSOCKS_CMD_BIND)
+                      forward->command == UVSOCKS_CMD_BIND)
                     {
                       int port;
 
                       memcpy (&port, &poll->buf[8], 2);
                       port = htons(port);
 
-                      if (context->forward->callback_func)
-                        context->forward->callback_func (uvsocks,
-                                                         context->forward->remote_host,
-                                                         context->forward->remote_port,
-                                                         uvsocks->host,
-                                                         port,
-                                                         context->forward->callback_data);
+                      if (forward->callback_func)
+                        forward->callback_func (uvsocks,
+                                                forward->remote_host,
+                                                forward->remote_port,
+                                                uvsocks->host,
+                                                port,
+                                                forward->callback_data);
                       uvsocks_remote_set_stage (context, UVSOCKS_STAGE_BIND);
                       uvsocks_poll_read_start (context->remote,
                                                UV_READABLE | UV_DISCONNECT,
@@ -1008,13 +1009,13 @@ uvsocks_poll_read (uv_poll_t*  handle,
                     }
 
                   if (context->stage == UVSOCKS_STAGE_BIND &&
-                      context->forward->command == UVSOCKS_CMD_BIND)
+                      forward->command == UVSOCKS_CMD_BIND)
                     {
                       struct sockaddr_in addr;
                       int r;
 
-                      uv_ip4_addr (context->forward->remote_host,
-                                   context->forward->remote_port,
+                      uv_ip4_addr (forward->remote_host,
+                                   forward->remote_port,
                                   &addr);
                       if (uvsocks_create_socket (&context->local->sock))
                         break;
@@ -1066,15 +1067,15 @@ fail:
             uvsocks->user,
             uvsocks->host,
             uvsocks->port,
-            context->forward->remote_host,
-            context->forward->remote_port,
+            forward->remote_host,
+            forward->remote_port,
             status,
             events);
   uvsocks_remove_context (uvsocks, context);
-  if (context->forward->command == UVSOCKS_CMD_BIND)
+  if (forward->command == UVSOCKS_CMD_BIND)
     uvsocks_send_async (uvsocks,
                         uvsocks_reverse_forward,
-                        context->forward, NULL);
+                        forward, NULL);
 }
 
 static int
