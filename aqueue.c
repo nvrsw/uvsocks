@@ -1,10 +1,5 @@
 /* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*-
    vim: set autoindent expandtab shiftwidth=2 softtabstop=2 tabstop=2: */
-/*
- * cb-aqueue.c
- *
- * Copyright (c) 2013-2016 EMSTONE, All rights reserved.
- */
 
 #include "aqueue.h"
 #include <uv.h>
@@ -26,7 +21,7 @@ struct _AQueue
   uv_cond_t  cond;
 };
 
-static void
+static int
 aqueue_push_unlocked (AQueue *aqueue,
                       void   *element)
 {
@@ -34,12 +29,14 @@ aqueue_push_unlocked (AQueue *aqueue,
     {
       printf ("failed to push because the queue is full (%d)",
                aqueue->max);
-      return;
+      return -1;
     }
 
   aqueue->elements[aqueue->head] = element;
   AQUEUE_MOVE (aqueue, aqueue->head);
   aqueue->length++;
+
+  return 0;
 }
 
 static void *
@@ -133,21 +130,25 @@ aqueue_get_length (AQueue *aqueue)
   return length;
 }
 
-void
+int
 aqueue_push (AQueue *aqueue,
              void   *element)
 {
+  int ret;
+
   if (!aqueue)
-    return;
+    return -1;
 
   uv_mutex_lock (&aqueue->mutex);
 
-  aqueue_push_unlocked (aqueue, element);
+  ret = aqueue_push_unlocked (aqueue, element);
 
   if (aqueue->waiting)
     uv_cond_signal (&aqueue->cond);
 
   uv_mutex_unlock (&aqueue->mutex);
+
+  return ret;
 }
 
 void *
@@ -166,6 +167,23 @@ aqueue_pop (AQueue *aqueue)
   aqueue->waiting--;
 
   element = aqueue_pop_unlocked (aqueue);
+
+  uv_mutex_unlock (&aqueue->mutex);
+
+  return element;
+}
+
+void *
+aqueue_try_pop (AQueue *aqueue)
+{
+  void *element;
+
+  if (!aqueue)
+    return NULL;
+
+  uv_mutex_lock (&aqueue->mutex);
+
+  element = aqueue->length > 0 ? aqueue_pop_unlocked (aqueue) : NULL;
 
   uv_mutex_unlock (&aqueue->mutex);
 
