@@ -1,10 +1,5 @@
 /* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*-
    vim: set autoindent expandtab shiftwidth=2 softtabstop=2 tabstop=2: */
-/*
- * uvsocks.h
- *
- * Copyright (c) 2017 EMSTONE, All rights reserved.
- */
 
 #ifndef __UVSOCKS_H__
 #define __UVSOCKS_H__
