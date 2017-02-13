@@ -7,6 +7,27 @@ It has support forward and reverse mode.
 
 More information about socks5 : [RFC1928](http://www.ietf.org/rfc/rfc1928.txt "RFC1928")
 
+Building
+---
+1. Install the following build tools and dependencies:
+* [Python 2.7](https://www.python.org/ftp/python/2.7.9/python-2.7.9.amd64.msi) (install in C:\Python27)
+
+1. Clone [this repository](https://github.com/hsccr/uvsocks) It contains the build script, project files and patches.
+
+1. Now start a git-command-line window as a regular user. Go to the uvsocks directory and start building with the script. For example, to build 'Libuv' and its dependencies, run:
+
+  ```
+  $git submodule init
+  $git submodule update
+  ```
+
+To build the Windows:
+
+  `Compile and Run a Project in Visual Studio 2015`
+
+To build the Windows:
+
+
 Usage
 ---
    uvsocks [-L listen:port:host:port]
