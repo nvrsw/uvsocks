@@ -46,8 +46,17 @@ extern char *optarg;
 extern int optind;
 extern int optreset;
 
-static uv_loop_t  *main_loop;
-static UvSocks    *main_uvsocks;
+#define UVSOCKS_PARAM_MAX 64
+
+static uv_loop_t   *main_loop;
+static UvSocks     *main_uvsocks;
+static char         main_host[64];
+static int          main_port;
+static char         main_user[64];
+static char         main_password[64];
+static int          main_n_params;
+static UvSocksParam main_params[UVSOCKS_PARAM_MAX];
+
 static uv_signal_t sigint;
 static uv_signal_t sigterm;
 static uv_signal_t sighup;
@@ -63,8 +72,8 @@ void
 main_usage (void)
 {
 	fprintf (stderr,
-          "usage: uvsocks [-R listen:port:host:port]\n"
-          "               [-L listen:port:host:port]\n"
+          "usage: uvsocks [-R local:port:host:port]\n"
+          "               [-L local:port:host:port]\n"
           "               [-l login_name]\n"
           "               [-a password]\n"
           "               [-p port]\n"
@@ -146,12 +155,12 @@ int
 main_parse_forward (const char *forwardspec,
                     int         dynamicforward,
                     int         remoteforward,
-                    char      **listen_host,
-                    int        *listen_port,
-                    char      **listen_path,
-                    char      **remote_host,
-                    int        *remote_port,
-                    char      **remote_path)
+                    char      **local_host,
+                    int        *local_port,
+                    char      **local_path,
+                    char      **socks_host,
+                    int        *socks_port,
+                    char      **socks_path)
 {
 	fwdarg forwardargs[4];
 	char *p, *cp;
@@ -180,66 +189,66 @@ main_parse_forward (const char *forwardspec,
 	  case 1:
 		  if (forwardargs[0].ispath)
         {
-			    *listen_path = strdup (forwardargs[0].arg);
-			    *listen_port = PORT_STREAMLOCAL;
+			    *local_path = strdup (forwardargs[0].arg);
+			    *local_port = PORT_STREAMLOCAL;
 		    }
       else
         {
-			    *listen_host = NULL;
-			    *listen_port = (int) strtol (forwardargs[0].arg, (char **) NULL, 10);
+			    *local_host = NULL;
+			    *local_port = (int) strtol (forwardargs[0].arg, (char **) NULL, 10);
 		    }
-		  *remote_host = strdup ("socks");
+		  *socks_host = strdup ("socks");
 		  break;
 	  case 2:
 		  if (forwardargs[0].ispath && forwardargs[1].ispath)
         {
-			    *listen_path = strdup (forwardargs[0].arg);
-			    *listen_port = PORT_STREAMLOCAL;
-			    *remote_path = strdup (forwardargs[1].arg);
-			    *remote_port = PORT_STREAMLOCAL;
+			    *local_path = strdup (forwardargs[0].arg);
+			    *local_port = PORT_STREAMLOCAL;
+			    *socks_path = strdup (forwardargs[1].arg);
+			    *socks_port = PORT_STREAMLOCAL;
 		    }
       else if (forwardargs[1].ispath)
         {
-			    *listen_host = NULL;
-			    *listen_port = (int) strtol (forwardargs[0].arg, (char **) NULL, 10);
-			    *remote_path = strdup (forwardargs[1].arg);
-			    *remote_port = PORT_STREAMLOCAL;
+			    *local_host = NULL;
+			    *local_port = (int) strtol (forwardargs[0].arg, (char **) NULL, 10);
+			    *socks_path = strdup (forwardargs[1].arg);
+			    *socks_port = PORT_STREAMLOCAL;
 		    }
       else
         {
-			    *listen_host = strdup (forwardargs[0].arg);
-			    *listen_port = (int) strtol (forwardargs[1].arg, (char **) NULL, 10);
-			    *remote_host = strdup ("socks");
+			    *local_host = strdup (forwardargs[0].arg);
+			    *local_port = (int) strtol (forwardargs[1].arg, (char **) NULL, 10);
+			    *socks_host = strdup ("socks");
 		    }
 		  break;
 	  case 3:
 		  if (forwardargs[0].ispath)
         {
-			    *listen_path = strdup (forwardargs[0].arg);
-			    *listen_port = PORT_STREAMLOCAL;
-			    *remote_host = strdup (forwardargs[1].arg);
-			    *remote_port = (int) strtol (forwardargs[2].arg, (char **) NULL, 10);
+			    *local_path = strdup (forwardargs[0].arg);
+			    *local_port = PORT_STREAMLOCAL;
+			    *socks_host = strdup (forwardargs[1].arg);
+			    *socks_port = (int) strtol (forwardargs[2].arg, (char **) NULL, 10);
 		    }
       else if (forwardargs[2].ispath)
         {
-			    *listen_host = strdup (forwardargs[0].arg);
-			    *listen_port = (int) strtol (forwardargs[1].arg, (char **) NULL, 10);
-			    *remote_path = strdup (forwardargs[2].arg);
-			    *remote_port = PORT_STREAMLOCAL;
+			    *local_host = strdup (forwardargs[0].arg);
+			    *local_port = (int) strtol (forwardargs[1].arg, (char **) NULL, 10);
+			    *socks_path = strdup (forwardargs[2].arg);
+			    *socks_port = PORT_STREAMLOCAL;
 		    }
       else
         {
-			    *listen_host = NULL;
-			    *listen_port = (int) strtol (forwardargs[0].arg, (char **) NULL, 10);
-			    *remote_host = strdup (forwardargs[1].arg);
-			    *remote_port = (int) strtol (forwardargs[2].arg, (char **) NULL, 10);
+			    *local_host = NULL;
+			    *local_port = (int) strtol (forwardargs[0].arg, (char **) NULL, 10);
+			    *socks_host = strdup (forwardargs[1].arg);
+			    *socks_port = (int) strtol (forwardargs[2].arg, (char **) NULL, 10);
 		    }
 		  break;
 	  case 4:
-		  *listen_host = strdup (forwardargs[0].arg);
-		  *listen_port = (int)strtol (forwardargs[1].arg, (char **) NULL, 10);
-		  *remote_host = strdup (forwardargs[2].arg);
-		  *remote_port = (int)strtol (forwardargs[3].arg, (char **) NULL, 10);
+		  *local_host = strdup (forwardargs[0].arg);
+		  *local_port = (int)strtol (forwardargs[1].arg, (char **) NULL, 10);
+		  *socks_host = strdup (forwardargs[2].arg);
+		  *socks_port = (int)strtol (forwardargs[3].arg, (char **) NULL, 10);
 		  break;
 	  default:
 		  i = 0; /* failure */
@@ -256,42 +265,42 @@ main_parse_forward (const char *forwardspec,
     {
 		  if (!(i == 3 || i == 4))
         {
-			    if (*remote_path == NULL &&
-			        *listen_path == NULL)
+			    if (*socks_path == NULL &&
+			        *local_path == NULL)
 				    goto fail_free;
 		    }
-		  if (*remote_port <= 0 && *remote_path == NULL)
+		  if (*socks_port <= 0 && *socks_path == NULL)
 			  goto fail_free;
 	  }
 
-	if ((*listen_port < 0 && *listen_path == NULL) ||
-	    (!remoteforward && *listen_port == 0))
+	if ((*local_port < 0 && *local_path == NULL) ||
+	    (!remoteforward && *local_port == 0))
 		goto fail_free;
-	if (*remote_host != NULL &&
-      strlen (*remote_host) >= NI_MAXHOST)
+	if (*socks_host != NULL &&
+      strlen (*socks_host) >= NI_MAXHOST)
 		goto fail_free;
 	/* XXX - if connecting to a remote socket, max sun len may not match this host */
-	if (*remote_path != NULL &&
-	    strlen (*remote_path) >= PATH_MAX_SUN)
+	if (*socks_path != NULL &&
+	    strlen (*socks_path) >= PATH_MAX_SUN)
 		goto fail_free;
-	if (*listen_host != NULL &&
-	    strlen (*listen_host) >= NI_MAXHOST)
+	if (*local_host != NULL &&
+	    strlen (*local_host) >= NI_MAXHOST)
 		goto fail_free;
-	if (*listen_path != NULL &&
-	    strlen (*listen_path) >= PATH_MAX_SUN)
+	if (*local_path != NULL &&
+	    strlen (*local_path) >= PATH_MAX_SUN)
 		goto fail_free;
 
 	return (i);
 
  fail_free:
-	free (*remote_host);
-	*remote_host = NULL;
-	free (*remote_path);
-	*remote_path = NULL;
-	free (*listen_host);
-	*listen_host = NULL;
-	free (*listen_path);
-	*listen_path = NULL;
+	free (*socks_host);
+	*socks_host = NULL;
+	free (*socks_path);
+	*socks_path = NULL;
+	free (*local_host);
+	*local_host = NULL;
+	free (*local_path);
+	*local_path = NULL;
 	return (0);
 }
 
@@ -325,29 +334,77 @@ main_cleanup (void)
   uv_signal_stop (&sighup);
 }
 
-static void
-main_uvsocks_tunneled (UvSocks      *uvsocks,
-                       UvSocksStatus status,
-                       void         *data)
+static char *
+main_get_notify (UvSocksNotify  notify)
 {
-	fprintf (stderr,
-				  "main_uvsocks_tunneled: \n");
+  switch (notify)
+    {
+      case UVSOCKS_OK:
+        return "UVSOCKS_OK";
+      case UVSOCKS_OK_TCP_SERVER:
+        return "UVSOCKS_OK_TCP_SERVER";
+      case UVSOCKS_OK_TCP_NEW_CONNECT:
+        return "UVSOCKS_OK_TCP_NEW_CONNECT";
+      case UVSOCKS_OK_TCP_CONNECTED:
+        return "UVSOCKS_OK_TCP_CONNECTED";
+      case UVSOCKS_OK_SOCKS_CONNECT:
+        return "UVSOCKS_OK_SOCKS_CONNECT";
+      case UVSOCKS_OK_SOCKS_BIND:
+        return "UVSOCKS_OK_SOCKS_BIND";
+      case UVSOCKS_ERROR:
+        return "UVSOCKS_ERROR";
+      case UVSOCKS_ERROR_TCP_SERVER:
+        return "UVSOCKS_ERROR_TCP_SERVER";
+      case UVSOCKS_ERROR_TCP_PORT:
+        return "UVSOCKS_ERROR_TCP_PORT";
+      case UVSOCKS_ERROR_TCP_BIND:
+        return "UVSOCKS_ERROR_TCP_BIND";
+      case UVSOCKS_ERROR_TCP_LISTEN:
+        return "UVSOCKS_ERROR_TCP_LISTEN";
+      case UVSOCKS_ERROR_TCP_NEW_CONNECT:
+        return "UVSOCKS_ERROR_TCP_NEW_CONNECT";
+      case UVSOCKS_ERROR_TCP_CREATE_SESSION:
+        return "UVSOCKS_ERROR_TCP_CREATE_SESSION";
+      case UVSOCKS_ERROR_TCP_ACCEPT:
+        return "UVSOCKS_ERROR_TCP_ACCEPT";
+      case UVSOCKS_ERROR_DNS_RESOLVED:
+        return "UVSOCKS_ERROR_DNS_RESOLVED";
+      case UVSOCKS_ERROR_DNS_ADDRINFO:
+        return "UVSOCKS_ERROR_DNS_ADDRINFO";
+      case UVSOCKS_ERROR_TCP_CONNECTED:
+        return "UVSOCKS_ERROR_TCP_CONNECTED";
+      case UVSOCKS_ERROR_TCP_READ_START:
+        return "UVSOCKS_ERROR_TCP_READ_START";
+      case UVSOCKS_ERROR_TCP_SOCKS_READ:
+        return "UVSOCKS_ERROR_TCP_SOCKS_READ";
+      case UVSOCKS_ERROR_TCP_LOCAL_READ:
+        return "UVSOCKS_ERROR_TCP_LOCAL_READ";
+      case UVSOCKS_ERROR_SOCKS_HANDSHAKE:
+        return "UVSOCKS_ERROR_SOCKS_HANDSHAKE";
+      case UVSOCKS_ERROR_SOCKS_AUTHENTICATION:
+        return "UVSOCKS_ERROR_SOCKS_AUTHENTICATION";
+      case UVSOCKS_ERROR_SOCKS_COMMAND:
+        return "UVSOCKS_ERROR_SOCKS_COMMAND";
+      case UVSOCKS_ERROR_SOCKS_CMD_BIND:
+        return "UVSOCKS_ERROR_SOCKS_CMD_BIND";
+    }
+  return "UNKNOWN";
 }
 
 static void
-main_uvsocks_forwarded (UvSocks      *uvsocks,
-                        char         *remote_host,
-                        int           remote_port,
-                        char         *listen_host,
-                        int           listen_port,
-                        void         *data)
+main_uvsocks_notify (UvSocks       *uvsocks,
+                     UvSocksNotify  notify,
+                     UvSocksParam  *param,
+                     void          *data)
 {
 	fprintf (stderr,
-				  "forwarded: %s:%d -> %s:%d\n",
-           listen_host,
-           listen_port,
-           remote_host,
-           remote_port);
+				  "main[%s]: is_forward[%d] [%s:%d -> %s:%d]\n",
+           main_get_notify (notify),
+           param->is_forward,
+           param->socks_host,
+           param->socks_port,
+           param->local_host,
+           param->local_port);
 }
 
 static int
@@ -362,12 +419,12 @@ main_tunnel (int    ac,
   int port;
   char *user;
   char *password;
-  char *listen_host;
-  int listen_port;
-  char *listen_path;
-  char *remote_host;
-  int remote_port;
-  char *remote_path;
+  char *local_host;
+  int local_port;
+  char *local_path;
+  char *socks_host;
+  int socks_port;
+  char *socks_path;
 
   ret = 0;
   host = NULL;
@@ -375,18 +432,19 @@ main_tunnel (int    ac,
   user = NULL;
   password = NULL;
 
+  main_n_params = 0;
 again:
   while ((opt = getopt (ac,
                         av,
                        "a:l:p:"
 	                     "L:R:")) != -1)
   {
-    listen_host = NULL;
-    listen_port = -1;
-    listen_path = NULL;
-    remote_host = NULL;
-    remote_port = -1;
-    remote_path = NULL;
+    local_host = NULL;
+    local_port = -1;
+    local_path = NULL;
+    socks_host = NULL;
+    socks_port = -1;
+    socks_path = NULL;
 
 		switch (opt)
       {
@@ -405,55 +463,39 @@ again:
 			  break;
 		  case 'L':
 			  if (main_parse_forward (optarg, 0, 0,
-                                &listen_host,
-                                &listen_port,
-                                &listen_path,
-                                &remote_host,
-                                &remote_port,
-                                &remote_path))
-				  uvsocks_add_forward (main_uvsocks,
-                               listen_host ? listen_host : "0.0.0.0",
-                               listen_port,
-                               remote_host ? remote_host : "0.0.0.0",
-                               remote_port,
-                               main_uvsocks_forwarded, NULL);
-			  else {
-				  fprintf (stderr,
-				          "Bad forwarding specification '%s'\n",
-				           optarg);
-			  }
-			  break;
-		  case 'R':
-			  if (main_parse_forward (optarg, 0, 1,
-                                &listen_host,
-                                &listen_port,
-                                &listen_path,
-                                &remote_host,
-                                &remote_port,
-                                &remote_path))
-          uvsocks_add_reverse_forward (main_uvsocks,
-                                       listen_host ? listen_host : "0.0.0.0",
-                                       listen_port,
-                                       remote_host ? remote_host : "0.0.0.0",
-                                       remote_port,
-                                       main_uvsocks_forwarded, NULL);
-        else
+                                &local_host,
+                                &local_port,
+                                &local_path,
+                                &socks_host,
+                                &socks_port,
+                                &socks_path))
+          {
+            main_params[main_n_params].is_forward = 1;
+            strcpy (main_params[main_n_params].socks_host, socks_host ? socks_host : "0.0.0.0");
+            main_params[main_n_params].socks_port = socks_port;
+            strcpy (main_params[main_n_params].local_host, local_host ? local_host : "0.0.0.0");
+            main_params[main_n_params].local_port = local_port;
+            main_n_params++;
+          }
+			  else
           {
 				    fprintf (stderr,
-				            "Bad reverse forwarding specification "
-				            "'%s'\n",
-                     optarg);
+				            "Bad forwarding specification '%s'\n",
+				             optarg);
 			    }
+			  break;
+		  case 'R':
+
 			  break;
 		  default:
 			  main_usage ();
         break;
 		  }
 
-    free (listen_host);
-    free (listen_path);
-    free (remote_host);
-    free (remote_path);
+    free (local_host);
+    free (local_path);
+    free (socks_host);
+    free (socks_path);
   }
 	
   ac -= optind;
@@ -511,13 +553,12 @@ again:
       ret = 1;
     }
   else
-    ret =  uvsocks_tunnel (main_uvsocks,
-                           host ? host : "",
-                           port,
-                           user ? user : "",
-                           password ? password : "",
-                           main_uvsocks_tunneled,
-                           main_uvsocks);
+    {
+      strcpy (main_host, host ? host : "");
+      main_port = port;
+      strcpy (main_user, user ? user : "");
+      strcpy (main_password, password ? password : "");
+    }
 
   free (host);
   free (user);
@@ -541,8 +582,23 @@ main (int    argc,
   uv_hrtime ();
   main_loop = uv_default_loop ();
   main_setup (main_loop);
-  main_uvsocks = uvsocks_new (main_loop);
+
   if (main_tunnel (argc, argv))
+    goto fail;
+
+  main_uvsocks = uvsocks_new (main_loop,
+                              main_host,
+                              main_port,
+                              main_user,
+                              main_password,
+                              main_n_params,
+                              main_params,
+                              main_uvsocks_notify,
+                              NULL);
+  if (!main_uvsocks)
+    goto fail;
+
+  if (uvsocks_run (main_uvsocks) != UVSOCKS_OK)
     goto fail;
   uv_run (main_loop, UV_RUN_DEFAULT);
 fail:
