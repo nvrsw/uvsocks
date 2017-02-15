@@ -72,8 +72,8 @@ void
 main_usage (void)
 {
 	fprintf (stderr,
-          "usage: uvsocks [-R local:port:host:port]\n"
-          "               [-L local:port:host:port]\n"
+          "usage: uvsocks [-R listen:port:destination:port]\n"
+          "               [-L listen:port:destination:port]\n"
           "               [-l login_name]\n"
           "               [-a password]\n"
           "               [-p port]\n"
@@ -155,11 +155,11 @@ int
 main_parse_forward (const char *forwardspec,
                     int         dynamicforward,
                     int         remoteforward,
-                    char      **local_host,
-                    int        *local_port,
+                    char      **listen_host,
+                    int        *listen_port,
                     char      **local_path,
-                    char      **socks_host,
-                    int        *socks_port,
+                    char      **destination_host,
+                    int        *destination_port,
                     char      **socks_path)
 {
 	fwdarg forwardargs[4];
@@ -190,65 +190,65 @@ main_parse_forward (const char *forwardspec,
 		  if (forwardargs[0].ispath)
         {
 			    *local_path = strdup (forwardargs[0].arg);
-			    *local_port = PORT_STREAMLOCAL;
+			    *listen_port = PORT_STREAMLOCAL;
 		    }
       else
         {
-			    *local_host = NULL;
-			    *local_port = (int) strtol (forwardargs[0].arg, (char **) NULL, 10);
+			    *listen_host = NULL;
+			    *listen_port = (int) strtol (forwardargs[0].arg, (char **) NULL, 10);
 		    }
-		  *socks_host = strdup ("socks");
+		  *destination_host = strdup ("socks");
 		  break;
 	  case 2:
 		  if (forwardargs[0].ispath && forwardargs[1].ispath)
         {
 			    *local_path = strdup (forwardargs[0].arg);
-			    *local_port = PORT_STREAMLOCAL;
+			    *listen_port = PORT_STREAMLOCAL;
 			    *socks_path = strdup (forwardargs[1].arg);
-			    *socks_port = PORT_STREAMLOCAL;
+			    *destination_port = PORT_STREAMLOCAL;
 		    }
       else if (forwardargs[1].ispath)
         {
-			    *local_host = NULL;
-			    *local_port = (int) strtol (forwardargs[0].arg, (char **) NULL, 10);
+			    *listen_host = NULL;
+			    *listen_port = (int) strtol (forwardargs[0].arg, (char **) NULL, 10);
 			    *socks_path = strdup (forwardargs[1].arg);
-			    *socks_port = PORT_STREAMLOCAL;
+			    *destination_port = PORT_STREAMLOCAL;
 		    }
       else
         {
-			    *local_host = strdup (forwardargs[0].arg);
-			    *local_port = (int) strtol (forwardargs[1].arg, (char **) NULL, 10);
-			    *socks_host = strdup ("socks");
+			    *listen_host = strdup (forwardargs[0].arg);
+			    *listen_port = (int) strtol (forwardargs[1].arg, (char **) NULL, 10);
+			    *destination_host = strdup ("socks");
 		    }
 		  break;
 	  case 3:
 		  if (forwardargs[0].ispath)
         {
 			    *local_path = strdup (forwardargs[0].arg);
-			    *local_port = PORT_STREAMLOCAL;
-			    *socks_host = strdup (forwardargs[1].arg);
-			    *socks_port = (int) strtol (forwardargs[2].arg, (char **) NULL, 10);
+			    *listen_port = PORT_STREAMLOCAL;
+			    *destination_host = strdup (forwardargs[1].arg);
+			    *destination_port = (int) strtol (forwardargs[2].arg, (char **) NULL, 10);
 		    }
       else if (forwardargs[2].ispath)
         {
-			    *local_host = strdup (forwardargs[0].arg);
-			    *local_port = (int) strtol (forwardargs[1].arg, (char **) NULL, 10);
+			    *listen_host = strdup (forwardargs[0].arg);
+			    *listen_port = (int) strtol (forwardargs[1].arg, (char **) NULL, 10);
 			    *socks_path = strdup (forwardargs[2].arg);
-			    *socks_port = PORT_STREAMLOCAL;
+			    *destination_port = PORT_STREAMLOCAL;
 		    }
       else
         {
-			    *local_host = NULL;
-			    *local_port = (int) strtol (forwardargs[0].arg, (char **) NULL, 10);
-			    *socks_host = strdup (forwardargs[1].arg);
-			    *socks_port = (int) strtol (forwardargs[2].arg, (char **) NULL, 10);
+			    *listen_host = NULL;
+			    *listen_port = (int) strtol (forwardargs[0].arg, (char **) NULL, 10);
+			    *destination_host = strdup (forwardargs[1].arg);
+			    *destination_port = (int) strtol (forwardargs[2].arg, (char **) NULL, 10);
 		    }
 		  break;
 	  case 4:
-		  *local_host = strdup (forwardargs[0].arg);
-		  *local_port = (int)strtol (forwardargs[1].arg, (char **) NULL, 10);
-		  *socks_host = strdup (forwardargs[2].arg);
-		  *socks_port = (int)strtol (forwardargs[3].arg, (char **) NULL, 10);
+		  *listen_host = strdup (forwardargs[0].arg);
+		  *listen_port = (int)strtol (forwardargs[1].arg, (char **) NULL, 10);
+		  *destination_host = strdup (forwardargs[2].arg);
+		  *destination_port = (int)strtol (forwardargs[3].arg, (char **) NULL, 10);
 		  break;
 	  default:
 		  i = 0; /* failure */
@@ -269,22 +269,22 @@ main_parse_forward (const char *forwardspec,
 			        *local_path == NULL)
 				    goto fail_free;
 		    }
-		  if (*socks_port <= 0 && *socks_path == NULL)
+		  if (*destination_port <= 0 && *socks_path == NULL)
 			  goto fail_free;
 	  }
 
-	if ((*local_port < 0 && *local_path == NULL) ||
-	    (!remoteforward && *local_port == 0))
+	if ((*listen_port < 0 && *local_path == NULL) ||
+	    (!remoteforward && *listen_port == 0))
 		goto fail_free;
-	if (*socks_host != NULL &&
-      strlen (*socks_host) >= NI_MAXHOST)
+	if (*destination_host != NULL &&
+      strlen (*destination_host) >= NI_MAXHOST)
 		goto fail_free;
 	/* XXX - if connecting to a remote socket, max sun len may not match this host */
 	if (*socks_path != NULL &&
 	    strlen (*socks_path) >= PATH_MAX_SUN)
 		goto fail_free;
-	if (*local_host != NULL &&
-	    strlen (*local_host) >= NI_MAXHOST)
+	if (*listen_host != NULL &&
+	    strlen (*listen_host) >= NI_MAXHOST)
 		goto fail_free;
 	if (*local_path != NULL &&
 	    strlen (*local_path) >= PATH_MAX_SUN)
@@ -293,12 +293,12 @@ main_parse_forward (const char *forwardspec,
 	return (i);
 
  fail_free:
-	free (*socks_host);
-	*socks_host = NULL;
+	free (*destination_host);
+	*destination_host = NULL;
 	free (*socks_path);
 	*socks_path = NULL;
-	free (*local_host);
-	*local_host = NULL;
+	free (*listen_host);
+	*listen_host = NULL;
 	free (*local_path);
 	*local_path = NULL;
 	return (0);
@@ -401,10 +401,10 @@ main_uvsocks_notify (UvSocks       *uvsocks,
 				  "main[%s]: is_forward[%d] [%s:%d -> %s:%d]\n",
            main_get_notify (notify),
            param->is_forward,
-           param->socks_host,
-           param->socks_port,
-           param->local_host,
-           param->local_port);
+           param->destination_host,
+           param->destination_port,
+           param->listen_host,
+           param->listen_port);
 }
 
 static int
@@ -419,11 +419,11 @@ main_tunnel (int    ac,
   int port;
   char *user;
   char *password;
-  char *local_host;
-  int local_port;
+  char *listen_host;
+  int listen_port;
   char *local_path;
-  char *socks_host;
-  int socks_port;
+  char *destination_host;
+  int destination_port;
   char *socks_path;
 
   ret = 0;
@@ -439,11 +439,11 @@ again:
                        "a:l:p:"
 	                     "L:R:")) != -1)
   {
-    local_host = NULL;
-    local_port = -1;
+    listen_host = NULL;
+    listen_port = -1;
     local_path = NULL;
-    socks_host = NULL;
-    socks_port = -1;
+    destination_host = NULL;
+    destination_port = -1;
     socks_path = NULL;
 
 		switch (opt)
@@ -463,18 +463,18 @@ again:
 			  break;
 		  case 'L':
 			  if (main_parse_forward (optarg, 0, 0,
-                                &local_host,
-                                &local_port,
+                                &listen_host,
+                                &listen_port,
                                 &local_path,
-                                &socks_host,
-                                &socks_port,
+                                &destination_host,
+                                &destination_port,
                                 &socks_path))
           {
             main_params[main_n_params].is_forward = 1;
-            strcpy (main_params[main_n_params].socks_host, socks_host ? socks_host : "0.0.0.0");
-            main_params[main_n_params].socks_port = socks_port;
-            strcpy (main_params[main_n_params].local_host, local_host ? local_host : "0.0.0.0");
-            main_params[main_n_params].local_port = local_port;
+            strcpy (main_params[main_n_params].destination_host, destination_host ? destination_host : "0.0.0.0");
+            main_params[main_n_params].destination_port = destination_port;
+            strcpy (main_params[main_n_params].listen_host, listen_host ? listen_host : "0.0.0.0");
+            main_params[main_n_params].listen_port = listen_port;
             main_n_params++;
           }
 			  else
@@ -486,18 +486,18 @@ again:
 			  break;
 		  case 'R':
 			  if (main_parse_forward (optarg, 0, 0,
-                                &local_host,
-                                &local_port,
+                                &listen_host,
+                                &listen_port,
                                 &local_path,
-                                &socks_host,
-                                &socks_port,
+                                &destination_host,
+                                &destination_port,
                                 &socks_path))
           {
             main_params[main_n_params].is_forward = 0;
-            strcpy (main_params[main_n_params].socks_host, socks_host ? socks_host : "0.0.0.0");
-            main_params[main_n_params].socks_port = socks_port;
-            strcpy (main_params[main_n_params].local_host, local_host ? local_host : "0.0.0.0");
-            main_params[main_n_params].local_port = local_port;
+            strcpy (main_params[main_n_params].destination_host, destination_host ? destination_host : "0.0.0.0");
+            main_params[main_n_params].destination_port = destination_port;
+            strcpy (main_params[main_n_params].listen_host, listen_host ? listen_host : "0.0.0.0");
+            main_params[main_n_params].listen_port = listen_port;
             main_n_params++;
           }
 			  else
@@ -512,9 +512,9 @@ again:
         break;
 		  }
 
-    free (local_host);
+    free (listen_host);
     free (local_path);
-    free (socks_host);
+    free (destination_host);
     free (socks_path);
   }
 	

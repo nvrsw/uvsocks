@@ -39,10 +39,10 @@ typedef struct _UvSocksParam UvSocksParam;
 struct _UvSocksParam
 {
   int    is_forward;
-  char   socks_host[64];
-  int    socks_port;
-  char   local_host[64];
-  int    local_port;
+  char   destination_host[64];
+  int    destination_port;
+  char   listen_host[64];
+  int    listen_port;
 };
 
 typedef void (*UvSocksNotifyFunc) (UvSocks       *uvsocks,

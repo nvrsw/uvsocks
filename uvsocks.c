@@ -327,7 +327,6 @@ uvsocks_remove_session (UvSocksTunnel  *tunnel,
     free (session->local_buf);
  
   free (session);
-  //tunnel->n_sessions--;
 }
 
 static void
@@ -510,17 +509,17 @@ uvsocks_socks_establish (UvSocksSession *session)
   packet[packet_size++] = UVSOCKS_ADDR_TYPE_IPV4;
   if (tunnel->param.is_forward)
     {
-      uv_ip4_addr (tunnel->param.socks_host,
-                   tunnel->param.socks_port,
+      uv_ip4_addr (tunnel->param.destination_host,
+                   tunnel->param.destination_port,
                   &addr);
-      port = htons (tunnel->param.socks_port);
+      port = htons (tunnel->param.destination_port);
     }
   else
     {
-      uv_ip4_addr (tunnel->param.local_host,
-                   tunnel->param.local_port,
+      uv_ip4_addr (tunnel->param.listen_host,
+                   tunnel->param.listen_port,
                   &addr);
-      port = htons (tunnel->param.local_port);
+      port = htons (tunnel->param.listen_port);
     }
   memcpy (&packet[packet_size], &addr.sin_addr.S_un.S_addr, 4);
   packet_size += 4;
@@ -886,7 +885,7 @@ uvsocks_socks_read (uv_stream_t    *stream,
               memcpy (&port, &session->socks_buf[8], 2);
               port = htons(port);
 
-              tunnel->param.local_port = port;
+              tunnel->param.listen_port = port;
               if (uvsocks->callback_func)
                 uvsocks->callback_func (uvsocks,
                                         UVSOCKS_OK_SOCKS_BIND,
@@ -901,8 +900,8 @@ uvsocks_socks_read (uv_stream_t    *stream,
             {
               uvsocks_connect_local (uvsocks,
                                      session,
-                                     tunnel->param.socks_host,
-                                     tunnel->param.socks_port);
+                                     tunnel->param.destination_host,
+                                     tunnel->param.destination_port);
               break;
             }
 
@@ -1085,13 +1084,13 @@ uvsocks_start_local_server (UvSocks       *uvsocks,
   if (!tunnel)
     goto fail;
 
-  if (tunnel->param.local_port < 0 || tunnel->param.local_port > 65535)
+  if (tunnel->param.listen_port < 0 || tunnel->param.listen_port > 65535)
     {
       notify = UVSOCKS_ERROR_TCP_PORT;
       goto fail;
     }
 
-  uv_ip4_addr (tunnel->param.local_host, tunnel->param.local_port, &addr);
+  uv_ip4_addr (tunnel->param.listen_host, tunnel->param.listen_port, &addr);
 
   tunnel->server = malloc (sizeof (*tunnel->server));
   if (!tunnel->server)
@@ -1108,7 +1107,7 @@ uvsocks_start_local_server (UvSocks       *uvsocks,
 
   namelen = sizeof (name);
   uv_tcp_getsockname (tunnel->server, (struct sockaddr *) &name, &namelen);
-  tunnel->param.local_port = ntohs (name.sin_port);
+  tunnel->param.listen_port = ntohs (name.sin_port);
 
   r = uv_listen ((uv_stream_t *) tunnel->server, 16, uvsocks_local_new_connection);
   if (r < 0)
