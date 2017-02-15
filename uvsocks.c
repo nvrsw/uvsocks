@@ -157,6 +157,21 @@ uvsocks_connect_local (UvSocks        *uvsocks,
                        const char     *host,
                        const int       port);
 
+static int
+uvsocks_socks_start_read (UvSocksSession *session,
+                          uv_read_cb      read_cb);
+
+static int
+uvsocks_connect_socks (UvSocks        *uvsocks,
+                       UvSocksSession *session,
+                       const char     *host,
+                       const int       port);
+
+static void
+uvsocks_socks_read0 (uv_stream_t    *stream,
+                    ssize_t         nread,
+                    const uv_buf_t *buf);
+
 static void
 uvsocks_receive_async (uv_async_t *handle)
 {
@@ -572,6 +587,18 @@ uvsocks_socks_establish_ack (UvSocksSession *session,
       uvsocks_remove_session (tunnel, session);
       return 1;
     }
+  uv_read_stop ((uv_stream_t *)session->socks);
+  if (uvsocks_socks_start_read (session, uvsocks_socks_read0))
+    {
+      if (uvsocks->callback_func)
+        uvsocks->callback_func (uvsocks,
+                                UVSOCKS_ERROR_TCP_READ_START,
+                                &tunnel->param,
+                                uvsocks->callback_data);
+
+      uvsocks_remove_session (tunnel, session);
+      return 1;
+    }
   return 0;
 }
 
@@ -821,7 +848,18 @@ uvsocks_local_connected (uv_connect_t *connect,
       uvsocks_remove_session (tunnel, session);
       return;
     }
+  uv_read_stop ((uv_stream_t *)session->socks);
+  if (uvsocks_socks_start_read (session, uvsocks_socks_read0))
+    {
+      if (uvsocks->callback_func)
+        uvsocks->callback_func (uvsocks,
+                                UVSOCKS_ERROR_TCP_READ_START,
+                                &tunnel->param,
+                                uvsocks->callback_data);
 
+      uvsocks_remove_session (tunnel, session);
+      return 1;
+    }
   free (connect);
 }
 
@@ -931,12 +969,6 @@ uvsocks_local_start_read (UvSocksSession *session)
                                         uvsocks_local_read);
 }
 
-static int
-uvsocks_connect_socks (UvSocks        *uvsocks,
-                       UvSocksSession *session,
-                       const char     *host,
-                       const int       port);
-
 static void
 uvsocks_socks_read0 (uv_stream_t    *stream,
                     ssize_t         nread,
@@ -1002,17 +1034,17 @@ uvsocks_socks_read (uv_stream_t    *stream,
         uvsocks_socks_establish_ack (session, session->socks_buf, nread);
       break;
       case UVSOCKS_STAGE_TUNNEL:
-        uvsocks_write_packet (session->local, session->socks_buf, nread);
       break;
     }
 }
 
 static int
-uvsocks_socks_start_read (UvSocksSession *session)
+uvsocks_socks_start_read (UvSocksSession *session,
+                          uv_read_cb      read_cb)
 {
   return uv_read_start ((uv_stream_t *) session->socks,
                                         uvsocks_socks_alloc_buffer,
-                                        uvsocks_socks_read);
+                                        read_cb);
 }
 
 static void
@@ -1042,7 +1074,7 @@ uvsocks_socks_connected (uv_connect_t *connect,
                             uvsocks->callback_data);
 
   uvsocks_socks_login_req (session);
-  if (uvsocks_socks_start_read (session))
+  if (uvsocks_socks_start_read (session, uvsocks_socks_read))
     {
       if (uvsocks->callback_func)
         uvsocks->callback_func (uvsocks,
