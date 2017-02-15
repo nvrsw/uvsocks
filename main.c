@@ -485,7 +485,27 @@ again:
 			    }
 			  break;
 		  case 'R':
-
+			  if (main_parse_forward (optarg, 0, 0,
+                                &local_host,
+                                &local_port,
+                                &local_path,
+                                &socks_host,
+                                &socks_port,
+                                &socks_path))
+          {
+            main_params[main_n_params].is_forward = 0;
+            strcpy (main_params[main_n_params].socks_host, socks_host ? socks_host : "0.0.0.0");
+            main_params[main_n_params].socks_port = socks_port;
+            strcpy (main_params[main_n_params].local_host, local_host ? local_host : "0.0.0.0");
+            main_params[main_n_params].local_port = local_port;
+            main_n_params++;
+          }
+			  else
+          {
+				    fprintf (stderr,
+				            "Bad forwarding specification '%s'\n",
+				             optarg);
+			    }
 			  break;
 		  default:
 			  main_usage ();
