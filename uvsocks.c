@@ -252,48 +252,53 @@ uvsocks_session_set_stage (UvSocksSession *session,
   session->stage = stage;
 }
 
+static int
+uvsocks_get_empty_session (UvSocksTunnel  *tunnel)
+{
+  int s;
+
+  for (s = 0; s < tunnel->sessions; s++)
+    if (tunnel->sessions[s] == NULL)
+      return s;
+  return -1;
+}
+
+static void
+uvsocks_set_empty_session (UvSocksTunnel  *tunnel,
+                           UvSocksSession *session)
+{
+  int s;
+
+  for (s = 0; s < tunnel->sessions; s++)
+    if (tunnel->sessions[s] == session)
+      {
+        tunnel->sessions[s] = NULL;
+        break;
+      }
+}
+
 static UvSocksSession *
 uvsocks_create_session (UvSocksTunnel  *tunnel)
 {
   UvSocksSession *session;
+  int empty;
 
-  if (tunnel->n_sessions >= UVSOCKS_SESSION_MAX)
+  empty = uvsocks_get_empty_session (tunnel);
+  if (empty < 0 ||
+      tunnel->n_sessions >= UVSOCKS_SESSION_MAX)
     return NULL;
 
+  tunnel->n_sessions++;
   session = calloc (sizeof (UvSocksSession), 1);
   if (!session)
     return NULL;
 
-  session->local = malloc (sizeof (*session->local));
-  if (!session->local)
-    goto fail;
-
-  session->socks = malloc (sizeof (*session->socks));
-  if (!session->socks)
-    goto fail;
-
-  session->local_buf = malloc (UVSOCKS_BUF_MAX);
-  session->local_read = 0;
-  session->socks_buf = malloc (UVSOCKS_BUF_MAX);
-  session->socks_read = 0;
-
-  session->local->data = session;
-  session->socks->data = session;
   session->tunnel = tunnel;
 
   uvsocks_session_set_stage (session, UVSOCKS_STAGE_NONE);
 
-  tunnel->sessions[tunnel->n_sessions++] = session;
+  tunnel->sessions[empty] = session;
   return session;
-
-fail:
-  if (session->socks)
-    free (session->socks);
-  if (session->local)
-    free (session->local);
-  free (session);
-
-  return NULL;
 }
 
 static void
@@ -309,6 +314,7 @@ uvsocks_remove_session (UvSocksTunnel  *tunnel,
   if (!session)
     return;
 
+  uvsocks_set_empty_session (tunnel, session);
   if (session->socks)
     {
       uv_read_stop ((uv_stream_t *)session->socks);
@@ -327,6 +333,7 @@ uvsocks_remove_session (UvSocksTunnel  *tunnel,
     free (session->local_buf);
  
   free (session);
+  tunnel->n_sessions--;
 }
 
 static void
@@ -663,8 +670,15 @@ uvsocks_connect_local_real (UvSocksSession  *session,
   connect = malloc (sizeof (*connect));
   if (!connect)
     return;
-
   connect->data = session;
+
+  session->local = malloc (sizeof (*session->local));
+  if (!session->local)
+    return;
+  session->local_buf = malloc (UVSOCKS_BUF_MAX);
+  session->local_read = 0;
+  session->local->data = session;
+
   uv_tcp_init (uvsocks->loop, session->local);
   uv_tcp_connect (connect,
                   session->local,
@@ -993,8 +1007,15 @@ uvsocks_connect_socks_real (UvSocksSession  *session,
   connect = malloc (sizeof (*connect));
   if (!connect)
     return;
-
   connect->data = session;
+
+  session->socks = malloc (sizeof (*session->socks));
+  if (!session->socks)
+    return;
+  session->socks_buf = malloc (UVSOCKS_BUF_MAX);
+  session->socks_read = 0;
+  session->socks->data = session;
+
   uv_tcp_init (uvsocks->loop, session->socks);
   uv_tcp_connect (connect,
                   session->socks,
@@ -1039,6 +1060,13 @@ uvsocks_local_new_connection (uv_stream_t *stream,
       notify = UVSOCKS_ERROR_TCP_CREATE_SESSION;
       goto fail;
     }
+
+  session->local = malloc (sizeof (*session->local));
+  if (!session->local)
+    goto fail;
+  session->local_buf = malloc (UVSOCKS_BUF_MAX);
+  session->local_read = 0;
+  session->local->data = session;
 
   uv_tcp_init (uvsocks->loop, session->local);
   if (uv_accept (stream, (uv_stream_t *) session->local))
@@ -1095,6 +1123,7 @@ uvsocks_start_local_server (UvSocks       *uvsocks,
   tunnel->server = malloc (sizeof (*tunnel->server));
   if (!tunnel->server)
     goto fail;
+  tunnel->server->data = tunnel;
 
   uv_tcp_init (uvsocks->loop, tunnel->server);
 
@@ -1115,8 +1144,6 @@ uvsocks_start_local_server (UvSocks       *uvsocks,
       notify = UVSOCKS_ERROR_TCP_LISTEN;
       goto fail;
     }
-
-  tunnel->server->data = tunnel;
 
   notify = UVSOCKS_OK_TCP_SERVER;
   if (uvsocks->callback_func)
