@@ -35,13 +35,6 @@
 #define PORT_STREAMLOCAL	-2
 #define PATH_MAX_SUN 1024
 
-typedef struct _fwdarg fwdarg;
-struct _fwdarg
-{
-	char *arg;
-	int   ispath;
-};
-
 extern char *optarg;
 extern int optind;
 extern int optreset;
@@ -87,221 +80,6 @@ main_usage (void)
           "          -R 5824:192.168.0.231:8000 \\\n"
           "          192.168.0.15 -l user -a password -p 1080\n"
 	        );
-}
-
-static int
-main_parse_forward_field (char    **p,
-                          fwdarg   *forward)
-{
-	char *ep, *cp = *p;
-	int ispath = 0;
-
-	if (*cp == '\0')
-    {
-		  *p = NULL;
-		  return -1;	/* end of string */
-	  }
-
-	/*
-	 * A field escaped with square brackets is used literally.
-	 * XXX - allow ']' to be escaped via backslash?
-	 */
-	if (*cp == '[')
-    {
-		  /* find matching ']' */
-		  for (ep = cp + 1; *ep != ']' && *ep != '\0'; ep++)
-        {
-			    if (*ep == '/')
-				    ispath = 1;
-		    }
-		  /* no matching ']' or not at end of field. */
-		  if (ep[0] != ']' || (ep[1] != ':' && ep[1] != '\0'))
-			  return -1;
-		  /* NUL terminate the field and advance p past the colon */
-		  *ep++ = '\0';
-		  if (*ep != '\0')
-			  *ep++ = '\0';
-		  forward->arg = cp + 1;
-		  forward->ispath = ispath;
-		  *p = ep;
-		  return 0;
-	  }
-
-	for (cp = *p; *cp != '\0'; cp++)
-    {
-		  switch (*cp)
-        {
-		    case '\\':
-			    memmove(cp, cp + 1, strlen(cp + 1) + 1);
-			    if (*cp == '\0')
-				    return -1;
-			    break;
-		    case '/':
-			    ispath = 1;
-			    break;
-		    case ':':
-			    *cp++ = '\0';
-			    goto done;
-		    }
-	  }
-done:
-	forward->arg = *p;
-	forward->ispath = ispath;
-	*p = cp;
-	return 0;
-}
-
-int
-main_parse_forward (const char *forwardspec,
-                    int         dynamicforward,
-                    int         remoteforward,
-                    char      **listen_host,
-                    int        *listen_port,
-                    char      **local_path,
-                    char      **destination_host,
-                    int        *destination_port,
-                    char      **socks_path)
-{
-	fwdarg forwardargs[4];
-	char *p, *cp;
-	int i;
-
-	memset (forwardargs, 0, sizeof (forwardargs));
-
-	cp = p = strdup (forwardspec);
-
-	/* skip leading spaces */
-	while (isspace ((unsigned char) *cp))
-		cp++;
-
-	for (i = 0; i < 4; ++i)
-    {
-		  if (main_parse_forward_field (&cp, &forwardargs[i]) != 0)
-			  break;
-	  }
-
-	/* Check for trailing garbage */
-	if (cp != NULL && *cp != '\0')
-    i = 0;	/* failure */
-
-	switch (i)
-    {
-	  case 1:
-		  if (forwardargs[0].ispath)
-        {
-			    *local_path = strdup (forwardargs[0].arg);
-			    *listen_port = PORT_STREAMLOCAL;
-		    }
-      else
-        {
-			    *listen_host = NULL;
-			    *listen_port = (int) strtol (forwardargs[0].arg, (char **) NULL, 10);
-		    }
-		  *destination_host = strdup ("socks");
-		  break;
-	  case 2:
-		  if (forwardargs[0].ispath && forwardargs[1].ispath)
-        {
-			    *local_path = strdup (forwardargs[0].arg);
-			    *listen_port = PORT_STREAMLOCAL;
-			    *socks_path = strdup (forwardargs[1].arg);
-			    *destination_port = PORT_STREAMLOCAL;
-		    }
-      else if (forwardargs[1].ispath)
-        {
-			    *listen_host = NULL;
-			    *listen_port = (int) strtol (forwardargs[0].arg, (char **) NULL, 10);
-			    *socks_path = strdup (forwardargs[1].arg);
-			    *destination_port = PORT_STREAMLOCAL;
-		    }
-      else
-        {
-			    *listen_host = strdup (forwardargs[0].arg);
-			    *listen_port = (int) strtol (forwardargs[1].arg, (char **) NULL, 10);
-			    *destination_host = strdup ("socks");
-		    }
-		  break;
-	  case 3:
-		  if (forwardargs[0].ispath)
-        {
-			    *local_path = strdup (forwardargs[0].arg);
-			    *listen_port = PORT_STREAMLOCAL;
-			    *destination_host = strdup (forwardargs[1].arg);
-			    *destination_port = (int) strtol (forwardargs[2].arg, (char **) NULL, 10);
-		    }
-      else if (forwardargs[2].ispath)
-        {
-			    *listen_host = strdup (forwardargs[0].arg);
-			    *listen_port = (int) strtol (forwardargs[1].arg, (char **) NULL, 10);
-			    *socks_path = strdup (forwardargs[2].arg);
-			    *destination_port = PORT_STREAMLOCAL;
-		    }
-      else
-        {
-			    *listen_host = NULL;
-			    *listen_port = (int) strtol (forwardargs[0].arg, (char **) NULL, 10);
-			    *destination_host = strdup (forwardargs[1].arg);
-			    *destination_port = (int) strtol (forwardargs[2].arg, (char **) NULL, 10);
-		    }
-		  break;
-	  case 4:
-		  *listen_host = strdup (forwardargs[0].arg);
-		  *listen_port = (int)strtol (forwardargs[1].arg, (char **) NULL, 10);
-		  *destination_host = strdup (forwardargs[2].arg);
-		  *destination_port = (int)strtol (forwardargs[3].arg, (char **) NULL, 10);
-		  break;
-	  default:
-		  i = 0; /* failure */
-	  }
-
-	free (p);
-
-	if (dynamicforward)
-    {
-		  if (!(i == 1 || i == 2))
-			  goto fail_free;
-	  }
-  else
-    {
-		  if (!(i == 3 || i == 4))
-        {
-			    if (*socks_path == NULL &&
-			        *local_path == NULL)
-				    goto fail_free;
-		    }
-		  if (*destination_port <= 0 && *socks_path == NULL)
-			  goto fail_free;
-	  }
-
-	if ((*listen_port < 0 && *local_path == NULL) ||
-	    (!remoteforward && *listen_port == 0))
-		goto fail_free;
-	if (*destination_host != NULL &&
-      strlen (*destination_host) >= NI_MAXHOST)
-		goto fail_free;
-	/* XXX - if connecting to a remote socket, max sun len may not match this host */
-	if (*socks_path != NULL &&
-	    strlen (*socks_path) >= PATH_MAX_SUN)
-		goto fail_free;
-	if (*listen_host != NULL &&
-	    strlen (*listen_host) >= NI_MAXHOST)
-		goto fail_free;
-	if (*local_path != NULL &&
-	    strlen (*local_path) >= PATH_MAX_SUN)
-		goto fail_free;
-
-	return (i);
-
- fail_free:
-	free (*destination_host);
-	*destination_host = NULL;
-	free (*socks_path);
-	*socks_path = NULL;
-	free (*listen_host);
-	*listen_host = NULL;
-	free (*local_path);
-	*local_path = NULL;
-	return (0);
 }
 
 static void
@@ -407,155 +185,192 @@ main_uvsocks_notify (UvSocks       *uvsocks,
            param->listen_port);
 }
 
-static int
-main_tunnel (int    ac,
-             char **av)
+char **
+main_split_string (const char *string,
+                   const char *delimiter,
+                   int        *n_strings)
 {
-  int ret;
-	int opt;
-	char *p;
-	char *cp;
-  char *host;
-  int port;
-  char *user;
-  char *password;
-  char *listen_host;
-  int listen_port;
-  char *local_path;
-  char *destination_host;
-  int destination_port;
-  char *socks_path;
+  const char *str;
+  char      **strings;
+  size_t      delimiter_len;
+  int         n;
 
-  ret = 0;
-  host = NULL;
-  port = 1080;
-  user = NULL;
-  password = NULL;
+  if (n_strings)
+    *n_strings = 0;
+
+  if (!string || !delimiter)
+    return NULL;
+
+  delimiter_len = strlen (delimiter);
+
+  n = 1;
+  for (str = string; *str; n++)
+    {
+      char *s;
+
+      s = strstr (str, delimiter);
+      if (!s)
+        break;
+      str = s + delimiter_len;
+    }
+
+  strings = calloc (n + 1, sizeof (char *));
+
+  n = 0;
+  str = string;
+  do
+    {
+      char *s;
+      char *a;
+      size_t len;
+
+      s = strstr (str, delimiter);
+      if (s)
+        len = s - str;
+      else
+        len = strlen (str);
+
+      if (s || len > 0)
+        {
+          a = malloc (len + 1);
+          if (len > 0)
+            memcpy (a, str, len);
+          a[len] = '\0';
+          strings[n] = a;
+          n++;
+        }
+
+      if (!s)
+        break;
+      str = s + delimiter_len;
+    }
+  while (*str);
+
+  if (n_strings)
+    *n_strings = n;
+
+  return strings;
+}
+
+void
+main_free_strings (char **strings)
+{
+  int n;
+
+  if (!strings)
+    return;
+
+  for (n = 0; strings[n]; n++)
+    free (strings[n]);
+  free (strings);
+}
+
+static int
+main_get_param (int    ac,
+                char **av)
+{
+	int opt;
 
   main_n_params = 0;
+  main_host[0] = '\0';
+  main_port = 1080;
+  main_user[0] = '\0';
+  main_password[0] = '\0';
+
 again:
   while ((opt = getopt (ac,
                         av,
                        "a:l:p:"
 	                     "L:R:")) != -1)
   {
-    listen_host = NULL;
-    listen_port = -1;
-    local_path = NULL;
-    destination_host = NULL;
-    destination_port = -1;
-    socks_path = NULL;
-
 		switch (opt)
       {
 		  case 'p':
-			  port = (int) strtol (optarg, (char **) NULL, 10);
-			  if (port <= 0)
-          {
-				    fprintf (stderr, "Bad port '%s'\n", optarg);
-			    }
+			  main_port = (int) strtol (optarg, (char **) NULL, 10);
 			  break;
 		  case 'l':
-			  user = strdup (optarg);
+        strcpy (main_user, optarg);
 			  break;
 		  case 'a':
-			  password = strdup (optarg);
+			  strcpy (main_password, optarg);
 			  break;
 		  case 'L':
-			  if (main_parse_forward (optarg, 0, 0,
-                                &listen_host,
-                                &listen_port,
-                                &local_path,
-                                &destination_host,
-                                &destination_port,
-                                &socks_path))
-          {
-            main_params[main_n_params].is_forward = 1;
-            strcpy (main_params[main_n_params].destination_host, destination_host ? destination_host : "0.0.0.0");
-            main_params[main_n_params].destination_port = destination_port;
-            strcpy (main_params[main_n_params].listen_host, listen_host ? listen_host : "0.0.0.0");
-            main_params[main_n_params].listen_port = listen_port;
-            main_n_params++;
-          }
-			  else
-          {
-				    fprintf (stderr,
-				            "Bad forwarding specification '%s'\n",
-				             optarg);
-			    }
-			  break;
 		  case 'R':
-			  if (main_parse_forward (optarg, 0, 0,
-                                &listen_host,
-                                &listen_port,
-                                &local_path,
-                                &destination_host,
-                                &destination_port,
-                                &socks_path))
-          {
-            main_params[main_n_params].is_forward = 0;
-            strcpy (main_params[main_n_params].destination_host, destination_host ? destination_host : "0.0.0.0");
-            main_params[main_n_params].destination_port = destination_port;
-            strcpy (main_params[main_n_params].listen_host, listen_host ? listen_host : "0.0.0.0");
-            main_params[main_n_params].listen_port = listen_port;
-            main_n_params++;
-          }
-			  else
-          {
-				    fprintf (stderr,
-				            "Bad forwarding specification '%s'\n",
-				             optarg);
-			    }
-			  break;
-		  default:
-			  main_usage ();
-        break;
-		  }
+        {
+          char **strs;
+          int n;
 
-    free (listen_host);
-    free (local_path);
-    free (destination_host);
-    free (socks_path);
+          n = 0;
+          strs = main_split_string (optarg, ":", &n);
+          if (n > 0)
+            {
+              strcpy (main_params[main_n_params].listen_host,
+                      (n >= 4) ? strs[n-4] : "0.0.0.0");
+              main_params[main_n_params].listen_port =
+                (int) strtol ((n >= 3) ? strs[n-3] : "0", (char **) NULL, 10);
+              strcpy (main_params[main_n_params].destination_host,
+                      (n >= 2) ? strs[n-2] : "0.0.0.0");
+              main_params[main_n_params].destination_port =
+                (int) strtol ((n >= 1) ? strs[n-1] : "0", (char **) NULL, 10);
+
+              main_params[main_n_params].is_forward = (opt == 'L');
+              main_n_params++;
+            }
+          main_free_strings (strs);
+        }
+			  break;
+		  }
   }
-	
   ac -= optind;
 	av += optind;
-
 	if (ac > 0)
     {
-		  if (strrchr(*av, '@'))
-        {
-			    p = strdup (*av);
-			    cp = strrchr(p, '@');
-			    if (cp == NULL || cp == p)
-				    main_usage();
-			    user = p;
-			    *cp = '\0';
-			    host = strdup (++cp);
+      char *socks_host;
+      char **socks_hosts;
+      int n_socks_hosts;
 
-          if (strrchr(user, ':'))
+      n_socks_hosts = 0;
+      socks_hosts = main_split_string (*av, "@", &n_socks_hosts);
+      if (n_socks_hosts > 1)
+        {
+          char **user;
+          int user_n;
+
+          user_n = 0;
+          user = main_split_string (socks_hosts[0], ":", &user_n);
+          if (user_n > 1)
             {
-              cp = strrchr(user, ':');
-			        user = p;
-			        *cp = '\0';
-			        password = strdup (++cp);
+                strcpy (main_user, user[0]);
+                strcpy (main_password, user[1]);
             }
-		    }
-      else
-			  host = strdup (*av);
+          else
+            strcpy (main_user, user[0]);
 
-      if (strrchr(host, ':'))
-        {
-          p = host;
-          cp = strrchr(host, ':');
-			    host = p;
-			    *cp = '\0';
-			    port = (int) strtol (++cp, (char **) NULL, 10);
-			  if (port <= 0)
-          {
-				    fprintf (stderr, "Bad port '%s'\n", optarg);
-			    }
+          main_free_strings (user);
+          socks_host = socks_hosts[1];
         }
+      else
+        socks_host = socks_hosts[0];
+
+      if (socks_host)
+        {
+          char **host;
+          int host_n;
+
+          host_n = 0;
+          host = main_split_string (socks_host, ":", &host_n);
+          if (host_n > 1)
+            {
+                strcpy (main_host, host[0]);
+                main_port = (int) strtol (host[1], (char **) NULL, 10);
+            }
+          else
+            strcpy (main_host, host[0]);
+
+          main_free_strings (host);
+        }
+
+      main_free_strings (socks_hosts);
 
 		  if (ac > 1)
         {
@@ -566,24 +381,16 @@ again:
       av++;
 	  }
 
-	/* Check that we got a host name. */
-  if (!host)
+  if (main_n_params == 0 ||
+      main_port <= 0 ||
+      main_user == '\0' ||
+      main_password == '\0')
     {
-      main_usage();
-      ret = 1;
-    }
-  else
-    {
-      strcpy (main_host, host ? host : "");
-      main_port = port;
-      strcpy (main_user, user ? user : "");
-      strcpy (main_password, password ? password : "");
+      main_usage ();
+      return 1;
     }
 
-  free (host);
-  free (user);
-  free (password);
-  return ret;
+  return 0;
 }
 
 void
@@ -603,8 +410,8 @@ main (int    argc,
   main_loop = uv_default_loop ();
   main_setup (main_loop);
 
-  if (main_tunnel (argc, argv))
-    goto fail;
+  if (main_get_param (argc, argv))
+    goto fail   ;
 
   main_uvsocks = uvsocks_new (main_loop,
                               main_host,
