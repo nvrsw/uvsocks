@@ -327,6 +327,7 @@ uvsocks_remove_session (UvSocksTunnel  *tunnel,
     free (session->local_buf);
  
   free (session);
+  //tunnel->n_sessions--;
 }
 
 static void
@@ -372,13 +373,21 @@ uvsocks_write_packet (uv_tcp_t *tcp,
                       char     *packet,
                       size_t    len)
 {
-  uv_buf_t bufs[1];
+  int r;
+  uv_buf_t buf;
+  int written = 0;
 
-  bufs[0].base = packet;
-  bufs[0].len = UV_BUF_LEN (len);
-  uv_try_write ((uv_stream_t *) tcp,
-                 bufs,
-                 1);
+  do {
+    buf = uv_buf_init (&packet[written], len - written);
+    r = uv_try_write ((uv_stream_t*)tcp, &buf, 1);
+
+    if (r < 0)
+      continue;
+
+    written += r;
+    if (len == written)
+      break;
+  } while (1);
 }
 
 static void
@@ -630,7 +639,17 @@ uvsocks_local_connected (uv_connect_t *connect,
       return;
     }
   uvsocks_session_set_stage (session, UVSOCKS_STAGE_TUNNEL);
-  uvsocks_local_start_read (session);
+  if (uvsocks_local_start_read (session))
+    {
+      if (uvsocks->callback_func)
+        uvsocks->callback_func (uvsocks,
+                                UVSOCKS_ERROR_TCP_READ_START,
+                                &tunnel->param,
+                                uvsocks->callback_data);
+
+      uvsocks_remove_session (tunnel, session);
+      return;
+    }
 
   free (connect);
 }
@@ -880,10 +899,10 @@ uvsocks_socks_read (uv_stream_t    *stream,
           if (session->stage == UVSOCKS_STAGE_BIND &&
               tunnel->param.is_forward == 0)
             {
-              uvsocks_connect_socks (uvsocks,
+              uvsocks_connect_local (uvsocks,
                                      session,
-                                     uvsocks->host,
-                                     uvsocks->port);
+                                     tunnel->param.socks_host,
+                                     tunnel->param.socks_port);
               break;
             }
 
@@ -894,7 +913,17 @@ uvsocks_socks_read (uv_stream_t    *stream,
                                     uvsocks->callback_data);
 
           uvsocks_session_set_stage (session, UVSOCKS_STAGE_TUNNEL);
-          uvsocks_local_start_read (session);
+          if (uvsocks_local_start_read (session))
+            {
+              if (uvsocks->callback_func)
+                uvsocks->callback_func (uvsocks,
+                                        UVSOCKS_ERROR_TCP_READ_START,
+                                        &tunnel->param,
+                                        uvsocks->callback_data);
+
+              uvsocks_remove_session (tunnel, session);
+              return;
+            }
         }
       break;
       case UVSOCKS_STAGE_TUNNEL:
@@ -1122,7 +1151,20 @@ uvsocks_run (UvSocks *uvsocks)
     return UVSOCKS_ERROR;
 
   for (i = 0; i < uvsocks->n_tunnels; i++)
-    uvsocks_start_local_server (uvsocks, &uvsocks->tunnels[i]);
+    if (uvsocks->tunnels[i].param.is_forward)
+      uvsocks_start_local_server (uvsocks, &uvsocks->tunnels[i]);
+    else
+      {
+        UvSocksSession *session;
+
+        session = uvsocks_create_session (&uvsocks->tunnels[i]);
+        if (!session)
+          continue;
+        uvsocks_connect_socks (uvsocks,
+                               session,
+                               uvsocks->host,
+                               uvsocks->port);
+      }
 
   return UVSOCKS_OK;
 }
