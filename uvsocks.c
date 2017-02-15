@@ -148,6 +148,15 @@ struct _UvSocksPacketReq
   uv_buf_t   buf;
 };
 
+static int
+uvsocks_local_start_read (UvSocksSession *session);
+
+static int
+uvsocks_connect_local (UvSocks        *uvsocks,
+                       UvSocksSession *session,
+                       const char     *host,
+                       const int       port);
+
 static void
 uvsocks_receive_async (uv_async_t *handle)
 {
@@ -257,7 +266,7 @@ uvsocks_get_empty_session (UvSocksTunnel  *tunnel)
 {
   int s;
 
-  for (s = 0; s < tunnel->sessions; s++)
+  for (s = 0; s < UVSOCKS_SESSION_MAX; s++)
     if (tunnel->sessions[s] == NULL)
       return s;
   return -1;
@@ -269,7 +278,7 @@ uvsocks_set_empty_session (UvSocksTunnel  *tunnel,
 {
   int s;
 
-  for (s = 0; s < tunnel->sessions; s++)
+  for (s = 0; s < UVSOCKS_SESSION_MAX; s++)
     if (tunnel->sessions[s] == session)
       {
         tunnel->sessions[s] = NULL;
@@ -381,7 +390,7 @@ uvsocks_write_packet (uv_tcp_t *tcp,
 {
   int r;
   uv_buf_t buf;
-  int written = 0;
+  size_t written = 0;
 
   do {
     buf = uv_buf_init (&packet[written], len - written);
@@ -413,68 +422,7 @@ uvsocks_write_packet0 (uv_tcp_t *tcp,
 }
 
 static void
-uvsocks_socks_login (UvSocksSession *session)
-{
-  char packet[20];
-  size_t packet_size;
-
-  uvsocks_session_set_stage (session, UVSOCKS_STAGE_HANDSHAKE);
-
-  //+----+----------+----------+
-  //|VER | NMETHODS | METHODS  |
-  //+----+----------+----------+
-  //| 1  |    1     | 1 to 255 |
-  //+----+----------+----------+
-  // The initial greeting from the client is
-  // field 1: SOCKS version number (must be 0x05 for this version)
-  // field 2: number of authentication methods supported, 1 byte
-  // field 3: authentication methods, variable length, 1 byte per method supported
-  packet_size = 0;
-  packet[packet_size++] = 0x05;
-  packet[packet_size++] = 0x01;
-  packet[packet_size++] = UVSOCKS_AUTH_PASSWD;
-
-  uvsocks_write_packet (session->socks, packet, 3);
-}
-
-static void
-uvsocks_socks_auth (UvSocksSession *session)
-{
-  UvSocksTunnel *tunnel = session->tunnel;
-  UvSocks *uvsocks = tunnel->uvsocks;
-  char packet[1024];
-  size_t packet_size;
-  size_t length;
-
-  uvsocks_session_set_stage (session, UVSOCKS_STAGE_AUTHENTICATE);
-
-  //+----+------+----------+------+----------+
-  //|VER | ULEN |  UNAME   | PLEN |  PASSWD  |
-  //+----+------+----------+------+----------+
-  //| 1  |  1   | 1 to 255 |  1   | 1 to 255 |
-  //+----+------+----------+------+----------+
-  //field 1: version number, 1 byte (must be 0x01)
-  //field 2: username length, 1 byte
-  //field 3: username
-  //field 4: password length, 1 byte
-  //field 5: password
-  packet_size = 0;
-  packet[packet_size++] = 0x01;
-  length = strlen (uvsocks->user);
-  packet[packet_size++] = (char) length;
-  memcpy (&packet[packet_size], uvsocks->user, length);
-  packet_size += length;
-
-  length = strlen (uvsocks->password);
-  packet[packet_size++] = (char) length;
-  memcpy (&packet[packet_size], uvsocks->password, length);
-  packet_size += length;
-
-  uvsocks_write_packet (session->socks, packet, packet_size);
-}
-
-static void
-uvsocks_socks_establish (UvSocksSession *session)
+uvsocks_socks_establish_req (UvSocksSession *session)
 {
   UvSocksTunnel *tunnel = session->tunnel;
   UvSocks *uvsocks = tunnel->uvsocks;
@@ -533,6 +481,226 @@ uvsocks_socks_establish (UvSocksSession *session)
   memcpy (&packet[packet_size], &port, 2);
   packet_size += 2;
   uvsocks_write_packet (session->socks, packet, packet_size);
+}
+
+static int
+uvsocks_socks_establish_ack (UvSocksSession *session,
+                             char           *buf,
+                             ssize_t         read)
+{
+  UvSocksTunnel *tunnel = session->tunnel;
+  UvSocks *uvsocks = tunnel->uvsocks;
+
+  //field 1: SOCKS protocol version, 1 byte (0x05 for this version)
+  //field 2: status, 1 byte:
+  //0x00 = request granted
+  //0x01 = general failure
+  //0x02 = connection not allowed by ruleset
+  //0x03 = network unreachable
+  //0x04 = host unreachable
+  //0x05 = connection refused by destination host
+  //0x06 = TTL expired
+  //0x07 = command not supported / protocol error
+  //0x08 = address type not supported
+  //
+  //field 3: reserved, must be 0x00
+  //field 4: address type, 1 byte: 0x01 = IPv4 address
+  //0x03 = Domain name
+  //0x04 = IPv6 address
+  //
+  //field 5: destination address of 4 bytes for IPv4 address
+  //1 byte of name length followed by the name for domain name
+  //16 bytes for IPv6 address
+  //
+  //field 6: network byte order port number, 2 bytes
+  if (session->socks_buf[0] != 0x05 ||
+      session->socks_buf[1] != 0x00)
+    {
+      if (uvsocks->callback_func)
+        uvsocks->callback_func (uvsocks,
+                                UVSOCKS_ERROR_SOCKS_COMMAND,
+                               &tunnel->param,
+                                uvsocks->callback_data);
+
+      uvsocks_remove_session (tunnel, session);
+      return 1;
+    }
+
+  if (session->stage == UVSOCKS_STAGE_ESTABLISH &&
+      tunnel->param.is_forward == 0)
+    {
+      int port;
+
+      memcpy (&port, &session->socks_buf[8], 2);
+      port = htons(port);
+
+      tunnel->param.listen_port = port;
+      if (uvsocks->callback_func)
+        uvsocks->callback_func (uvsocks,
+                                UVSOCKS_OK_SOCKS_BIND,
+                               &tunnel->param,
+                                uvsocks->callback_data);
+      uvsocks_session_set_stage (session, UVSOCKS_STAGE_BIND);
+      return 0;
+    }
+
+  if (session->stage == UVSOCKS_STAGE_BIND &&
+      tunnel->param.is_forward == 0)
+    {
+      uvsocks_connect_local (uvsocks,
+                             session,
+                             tunnel->param.destination_host,
+                             tunnel->param.destination_port);
+      return 0;
+    }
+
+  if (uvsocks->callback_func)
+    uvsocks->callback_func (uvsocks,
+                            UVSOCKS_OK_SOCKS_CONNECT,
+                            &tunnel->param,
+                            uvsocks->callback_data);
+
+  uvsocks_session_set_stage (session, UVSOCKS_STAGE_TUNNEL);
+  if (uvsocks_local_start_read (session))
+    {
+      if (uvsocks->callback_func)
+        uvsocks->callback_func (uvsocks,
+                                UVSOCKS_ERROR_TCP_READ_START,
+                                &tunnel->param,
+                                uvsocks->callback_data);
+
+      uvsocks_remove_session (tunnel, session);
+      return 1;
+    }
+  return 0;
+}
+
+static void
+uvsocks_socks_auth_req (UvSocksSession *session)
+{
+  UvSocksTunnel *tunnel = session->tunnel;
+  UvSocks *uvsocks = tunnel->uvsocks;
+  char packet[1024];
+  size_t packet_size;
+  size_t length;
+
+  uvsocks_session_set_stage (session, UVSOCKS_STAGE_AUTHENTICATE);
+
+  //+----+------+----------+------+----------+
+  //|VER | ULEN |  UNAME   | PLEN |  PASSWD  |
+  //+----+------+----------+------+----------+
+  //| 1  |  1   | 1 to 255 |  1   | 1 to 255 |
+  //+----+------+----------+------+----------+
+  //field 1: version number, 1 byte (must be 0x01)
+  //field 2: username length, 1 byte
+  //field 3: username
+  //field 4: password length, 1 byte
+  //field 5: password
+  packet_size = 0;
+  packet[packet_size++] = 0x01;
+  length = strlen (uvsocks->user);
+  packet[packet_size++] = (char) length;
+  memcpy (&packet[packet_size], uvsocks->user, length);
+  packet_size += length;
+
+  length = strlen (uvsocks->password);
+  packet[packet_size++] = (char) length;
+  memcpy (&packet[packet_size], uvsocks->password, length);
+  packet_size += length;
+
+  uvsocks_write_packet (session->socks, packet, packet_size);
+}
+
+static int
+uvsocks_socks_auth_ack (UvSocksSession *session,
+                        char           *buf,
+                        ssize_t         read)
+{
+  UvSocksTunnel *tunnel = session->tunnel;
+  UvSocks *uvsocks = tunnel->uvsocks;
+
+  //+----+--------+
+  //|VER | STATUS |
+  //+----+--------+
+  //| 1  |   1    |
+  //+----+--------+
+  //field 1: version, 1 byte
+  //field 2: status code, 1 byte 0x00 = success
+  //any other value = failure, connection must be closed
+  if (read < 2)
+    return 1;
+  if (session->socks_buf[0] != 0x01 ||
+      session->socks_buf[1] != UVSOCKS_AUTH_ALLOW)
+    {
+      if (uvsocks->callback_func)
+        uvsocks->callback_func (uvsocks,
+                                UVSOCKS_ERROR_SOCKS_AUTHENTICATION,
+                               &tunnel->param,
+                                uvsocks->callback_data);
+
+      uvsocks_remove_session (tunnel, session);
+      return 1;
+    }
+  uvsocks_socks_establish_req (session);
+  return 0;
+}
+
+static void
+uvsocks_socks_login_req (UvSocksSession *session)
+{
+  char packet[20];
+  size_t packet_size;
+
+  uvsocks_session_set_stage (session, UVSOCKS_STAGE_HANDSHAKE);
+
+  //+----+----------+----------+
+  //|VER | NMETHODS | METHODS  |
+  //+----+----------+----------+
+  //| 1  |    1     | 1 to 255 |
+  //+----+----------+----------+
+  // The initial greeting from the client is
+  // field 1: SOCKS version number (must be 0x05 for this version)
+  // field 2: number of authentication methods supported, 1 byte
+  // field 3: authentication methods, variable length, 1 byte per method supported
+  packet_size = 0;
+  packet[packet_size++] = 0x05;
+  packet[packet_size++] = 0x01;
+  packet[packet_size++] = UVSOCKS_AUTH_PASSWD;
+
+  uvsocks_write_packet (session->socks, packet, 3);
+}
+
+static int
+uvsocks_socks_login_ack (UvSocksSession *session,
+                         char           *buf,
+                         ssize_t         read)
+{
+  UvSocksTunnel *tunnel = session->tunnel;
+  UvSocks *uvsocks = tunnel->uvsocks;
+
+  //+----+--------+
+  //|VER | METHOD |
+  //+----+--------+
+  //| 1  |   1    |
+  //+----+--------+
+  //field 1: SOCKS version, 1 byte (0x05 for this version)
+  //field 2: chosen authentication method, 1 byte, or 0xFF if no acceptable methods were offered
+  if (read < 2)
+    return 1;
+  if (session->socks_buf[0] != 0x05 ||
+      session->socks_buf[1] != UVSOCKS_AUTH_PASSWD)
+    {
+      if (uvsocks->callback_func)
+        uvsocks->callback_func (uvsocks,
+                                UVSOCKS_ERROR_SOCKS_HANDSHAKE,
+                               &tunnel->param,
+                                uvsocks->callback_data);
+
+      uvsocks_remove_session (tunnel, session);
+      return 1;
+    }
+  uvsocks_socks_auth_req (session);
+  return 0;
 }
 
 static void
@@ -620,9 +788,6 @@ uvsocks_dns_resolve (UvSocks              *uvsocks,
       free (resolver);
     }
 }
-
-static int
-uvsocks_local_start_read (UvSocksSession *session);
 
 static void
 uvsocks_local_connected (uv_connect_t *connect,
@@ -773,6 +938,32 @@ uvsocks_connect_socks (UvSocks        *uvsocks,
                        const int       port);
 
 static void
+uvsocks_socks_read0 (uv_stream_t    *stream,
+                    ssize_t         nread,
+                    const uv_buf_t *buf)
+{
+  UvSocksSession *session = stream->data;
+  UvSocksTunnel *tunnel = session->tunnel;
+  UvSocks *uvsocks = tunnel->uvsocks;
+
+  if (nread < 0)
+    {
+      if (uvsocks->callback_func)
+        uvsocks->callback_func (uvsocks,
+                                UVSOCKS_ERROR_TCP_LOCAL_READ,
+                               &tunnel->param,
+                                uvsocks->callback_data);
+
+      uvsocks_remove_session (tunnel, session);
+      return;
+    }
+  if (nread == 0)
+    return;
+
+  uvsocks_write_packet (session->local, session->socks_buf, nread);
+}
+
+static void
 uvsocks_socks_read (uv_stream_t    *stream,
                     ssize_t         nread,
                     const uv_buf_t *buf)
@@ -801,148 +992,17 @@ uvsocks_socks_read (uv_stream_t    *stream,
       case UVSOCKS_STAGE_NONE:
       break;
       case UVSOCKS_STAGE_HANDSHAKE:
-        {
-          //+----+--------+
-          //|VER | METHOD |
-          //+----+--------+
-          //| 1  |   1    |
-          //+----+--------+
-          //field 1: SOCKS version, 1 byte (0x05 for this version)
-          //field 2: chosen authentication method, 1 byte, or 0xFF if no acceptable methods were offered
-          if (nread < 2)
-            break;
-          if (session->socks_buf[0] != 0x05 ||
-              session->socks_buf[1] != UVSOCKS_AUTH_PASSWD)
-            {
-              if (uvsocks->callback_func)
-                uvsocks->callback_func (uvsocks,
-                                        UVSOCKS_ERROR_SOCKS_HANDSHAKE,
-                                       &tunnel->param,
-                                        uvsocks->callback_data);
-
-              uvsocks_remove_session (tunnel, session);
-              break;
-            }
-          uvsocks_socks_auth (session);
-        }
+        uvsocks_socks_login_ack (session, session->socks_buf, nread);
       break;
       case UVSOCKS_STAGE_AUTHENTICATE:
-        {
-          //+----+--------+
-          //|VER | STATUS |
-          //+----+--------+
-          //| 1  |   1    |
-          //+----+--------+
-          //field 1: version, 1 byte
-          //field 2: status code, 1 byte 0x00 = success
-          //any other value = failure, connection must be closed
-          if (nread < 2)
-            break;
-          if (session->socks_buf[0] != 0x01 ||
-              session->socks_buf[1] != UVSOCKS_AUTH_ALLOW)
-            {
-              if (uvsocks->callback_func)
-                uvsocks->callback_func (uvsocks,
-                                        UVSOCKS_ERROR_SOCKS_AUTHENTICATION,
-                                       &tunnel->param,
-                                        uvsocks->callback_data);
-
-              uvsocks_remove_session (tunnel, session);
-              break;
-            }
-          uvsocks_socks_establish (session);
-        }
+        uvsocks_socks_auth_ack (session, session->socks_buf, nread);
       break;
       case UVSOCKS_STAGE_ESTABLISH:
       case UVSOCKS_STAGE_BIND:
-        {
-          //field 1: SOCKS protocol version, 1 byte (0x05 for this version)
-          //field 2: status, 1 byte:
-          //0x00 = request granted
-          //0x01 = general failure
-          //0x02 = connection not allowed by ruleset
-          //0x03 = network unreachable
-          //0x04 = host unreachable
-          //0x05 = connection refused by destination host
-          //0x06 = TTL expired
-          //0x07 = command not supported / protocol error
-          //0x08 = address type not supported
-          //
-          //field 3: reserved, must be 0x00
-          //field 4: address type, 1 byte: 0x01 = IPv4 address
-          //0x03 = Domain name
-          //0x04 = IPv6 address
-          //
-          //field 5: destination address of 4 bytes for IPv4 address
-          //1 byte of name length followed by the name for domain name
-          //16 bytes for IPv6 address
-          //
-          //field 6: network byte order port number, 2 bytes
-          if (session->socks_buf[0] != 0x05 ||
-              session->socks_buf[1] != 0x00)
-            {
-              if (uvsocks->callback_func)
-                uvsocks->callback_func (uvsocks,
-                                        UVSOCKS_ERROR_SOCKS_COMMAND,
-                                       &tunnel->param,
-                                        uvsocks->callback_data);
-
-              uvsocks_remove_session (tunnel, session);
-              break;
-            }
-
-          if (session->stage == UVSOCKS_STAGE_ESTABLISH &&
-              tunnel->param.is_forward == 0)
-            {
-              int port;
-
-              memcpy (&port, &session->socks_buf[8], 2);
-              port = htons(port);
-
-              tunnel->param.listen_port = port;
-              if (uvsocks->callback_func)
-                uvsocks->callback_func (uvsocks,
-                                        UVSOCKS_OK_SOCKS_BIND,
-                                       &tunnel->param,
-                                        uvsocks->callback_data);
-              uvsocks_session_set_stage (session, UVSOCKS_STAGE_BIND);
-              break;
-            }
-
-          if (session->stage == UVSOCKS_STAGE_BIND &&
-              tunnel->param.is_forward == 0)
-            {
-              uvsocks_connect_local (uvsocks,
-                                     session,
-                                     tunnel->param.destination_host,
-                                     tunnel->param.destination_port);
-              break;
-            }
-
-          if (uvsocks->callback_func)
-            uvsocks->callback_func (uvsocks,
-                                    UVSOCKS_OK_SOCKS_CONNECT,
-                                    &tunnel->param,
-                                    uvsocks->callback_data);
-
-          uvsocks_session_set_stage (session, UVSOCKS_STAGE_TUNNEL);
-          if (uvsocks_local_start_read (session))
-            {
-              if (uvsocks->callback_func)
-                uvsocks->callback_func (uvsocks,
-                                        UVSOCKS_ERROR_TCP_READ_START,
-                                        &tunnel->param,
-                                        uvsocks->callback_data);
-
-              uvsocks_remove_session (tunnel, session);
-              return;
-            }
-        }
+        uvsocks_socks_establish_ack (session, session->socks_buf, nread);
       break;
       case UVSOCKS_STAGE_TUNNEL:
-        {
-          uvsocks_write_packet (session->local, session->socks_buf, nread);
-        }
+        uvsocks_write_packet (session->local, session->socks_buf, nread);
       break;
     }
 }
@@ -981,7 +1041,7 @@ uvsocks_socks_connected (uv_connect_t *connect,
                             &tunnel->param,
                             uvsocks->callback_data);
 
-  uvsocks_socks_login (session);
+  uvsocks_socks_login_req (session);
   if (uvsocks_socks_start_read (session))
     {
       if (uvsocks->callback_func)
