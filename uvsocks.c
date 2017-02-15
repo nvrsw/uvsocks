@@ -89,9 +89,7 @@ struct _UvSocksSession
   UvSocksStage           stage;
   uv_tcp_t              *socks;
   uv_tcp_t              *local;
-  size_t                 local_read;
   char                  *local_buf;
-  size_t                 socks_read;
   char                  *socks_buf;
 };
 
@@ -879,7 +877,6 @@ uvsocks_connect_local_real (UvSocksSession  *session,
   if (!session->local)
     return;
   session->local_buf = malloc (UVSOCKS_BUF_MAX);
-  session->local_read = 0;
   session->local->data = session;
 
   uv_tcp_init (uvsocks->loop, session->local);
@@ -1105,7 +1102,6 @@ uvsocks_connect_socks_real (UvSocksSession  *session,
   if (!session->socks)
     return;
   session->socks_buf = malloc (UVSOCKS_BUF_MAX);
-  session->socks_read = 0;
   session->socks->data = session;
 
   uv_tcp_init (uvsocks->loop, session->socks);
@@ -1157,7 +1153,6 @@ uvsocks_local_new_connection (uv_stream_t *stream,
   if (!session->local)
     goto fail;
   session->local_buf = malloc (UVSOCKS_BUF_MAX);
-  session->local_read = 0;
   session->local->data = session;
 
   uv_tcp_init (uvsocks->loop, session->local);
