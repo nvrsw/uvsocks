@@ -404,9 +404,6 @@ uvsocks_dns_resolved (uv_getaddrinfo_t  *resolver,
 {
   UvSocksDnsResolve *d = resolver->data;
   UvSocksSessionTcp *session_tcp = d->data;
-  UvSocksSession *session = session_tcp->session;
-  UvSocksTunnel *tunnel = session->tunnel;
-  UvSocks *uvsocks = tunnel->uvsocks;
 
   if (status < 0)
     {
@@ -431,8 +428,6 @@ uvsocks_dns_resolve (UvSocks              *uvsocks,
                      void                 *data)
 {
   UvSocksSessionTcp *session_tcp = data;
-  UvSocksSession *session = session_tcp->session;
-  UvSocksTunnel *tunnel = session->tunnel;
   UvSocksDnsResolve *d;
   uv_getaddrinfo_t *resolver;
   struct addrinfo hints;
@@ -467,10 +462,10 @@ uvsocks_dns_resolve (UvSocks              *uvsocks,
                            s,
                            &hints);
   if (status)
-    {
-      uvsocks_notify (session_tcp, UVSOCKS_ERROR_DNS_ADDRINFO, 1);
-      free (resolver);
-    }
+  {
+    uvsocks_notify (session_tcp, UVSOCKS_ERROR_DNS_ADDRINFO, 1);
+    free (resolver);
+  }
 }
 
 static void
@@ -479,8 +474,6 @@ uvsocks_connected (uv_connect_t *connect,
 {
   UvSocksSessionTcp *session_tcp = connect->data;
   UvSocksSession *session = session_tcp->session;
-  UvSocksTunnel *tunnel = session->tunnel;
-  UvSocks *uvsocks = tunnel->uvsocks;
 
   if (status < 0)
     {
@@ -528,7 +521,7 @@ uvsocks_connect_real (UvSocksSessionTcp *session_tcp,
                   uvsocks_connected);
 }
 
-static int
+static void
 uvsocks_connect (UvSocks              *uvsocks,
                  const char           *host,
                  const int             port,
@@ -540,7 +533,6 @@ uvsocks_connect (UvSocks              *uvsocks,
                        port,
                        callback_func,
                        callback_data);
-  return 0;
 }
 
 static int
@@ -566,13 +558,10 @@ uvsocks_socks_establish_req (UvSocksSessionTcp *session_tcp)
 {
   UvSocksSession *session = session_tcp->session;
   UvSocksTunnel *tunnel = session->tunnel;
-  UvSocks *uvsocks = tunnel->uvsocks;
   char packet[1024];
   size_t packet_size;
   unsigned short port;
   struct sockaddr_in addr;
-
-  uvsocks_session_set_stage (session_tcp->session, UVSOCKS_STAGE_ESTABLISH);
 
   //+----+-----+-------+------+----------+----------+
   //|VER | CMD |  RSV  | ATYP | DST.ADDR | DST.PORT |
@@ -597,6 +586,9 @@ uvsocks_socks_establish_req (UvSocksSessionTcp *session_tcp)
   //16 bytes for IPv6 address
   //
   //field 6: port number in a network byte order, 2 bytes
+
+  uvsocks_session_set_stage (session_tcp->session, UVSOCKS_STAGE_ESTABLISH);
+
   packet_size = 0;
   packet[packet_size++] = 0x05;
   packet[packet_size++] = tunnel->param.is_forward ? UVSOCKS_CMD_CONNECT :
@@ -621,7 +613,7 @@ uvsocks_socks_establish_req (UvSocksSessionTcp *session_tcp)
   packet_size += 4;
   memcpy (&packet[packet_size], &port, 2);
   packet_size += 2;
-  uvsocks_write_packet (&session->socks, packet, packet_size);
+  uvsocks_write_packet (session_tcp, packet, packet_size);
 }
 
 static int
@@ -655,6 +647,7 @@ uvsocks_socks_establish_ack (UvSocksSessionTcp *session_tcp,
   //16 bytes for IPv6 address
   //
   //field 6: network byte order port number, 2 bytes
+
   if (session->socks.buf[0] != 0x05 ||
       session->socks.buf[1] != 0x00)
     {
@@ -713,8 +706,6 @@ uvsocks_socks_auth_req (UvSocksSessionTcp *session_tcp)
   size_t packet_size;
   size_t length;
 
-  uvsocks_session_set_stage (session, UVSOCKS_STAGE_AUTHENTICATE);
-
   //+----+------+----------+------+----------+
   //|VER | ULEN |  UNAME   | PLEN |  PASSWD  |
   //+----+------+----------+------+----------+
@@ -725,6 +716,9 @@ uvsocks_socks_auth_req (UvSocksSessionTcp *session_tcp)
   //field 3: username
   //field 4: password length, 1 byte
   //field 5: password
+
+  uvsocks_session_set_stage (session, UVSOCKS_STAGE_AUTHENTICATE);
+
   packet_size = 0;
   packet[packet_size++] = 0x01;
   length = strlen (uvsocks->user);
@@ -737,7 +731,7 @@ uvsocks_socks_auth_req (UvSocksSessionTcp *session_tcp)
   memcpy (&packet[packet_size], uvsocks->password, length);
   packet_size += length;
 
-  uvsocks_write_packet (&session->socks, packet, packet_size);
+  uvsocks_write_packet (session_tcp, packet, packet_size);
 }
 
 static int
@@ -746,8 +740,6 @@ uvsocks_socks_auth_ack (UvSocksSessionTcp *session_tcp,
                         ssize_t            read)
 {
   UvSocksSession *session = session_tcp->session;
-  UvSocksTunnel *tunnel = session->tunnel;
-  UvSocks *uvsocks = tunnel->uvsocks;
 
   //+----+--------+
   //|VER | STATUS |
@@ -773,8 +765,6 @@ static void
 uvsocks_socks_login_req (UvSocksSessionTcp *session_tcp)
 {
   UvSocksSession *session = session_tcp->session;
-  UvSocksTunnel *tunnel = session->tunnel;
-  UvSocks *uvsocks = tunnel->uvsocks;
   char packet[20];
   size_t packet_size;
 
@@ -794,7 +784,7 @@ uvsocks_socks_login_req (UvSocksSessionTcp *session_tcp)
   packet[packet_size++] = 0x01;
   packet[packet_size++] = UVSOCKS_AUTH_PASSWD;
 
-  uvsocks_write_packet (&session->socks, packet, 3);
+  uvsocks_write_packet (session_tcp, packet, 3);
 }
 
 static int
@@ -803,8 +793,6 @@ uvsocks_socks_login_ack (UvSocksSessionTcp *session_tcp,
                          ssize_t            read)
 {
   UvSocksSession *session = session_tcp->session;
-  UvSocksTunnel *tunnel = session->tunnel;
-  UvSocks *uvsocks = tunnel->uvsocks;
 
   //+----+--------+
   //|VER | METHOD |
@@ -832,15 +820,12 @@ uvsocks_read (uv_stream_t    *stream,
 {
   UvSocksSessionTcp *session_tcp = stream->data;
   UvSocksSession *session = session_tcp->session;
-  UvSocksTunnel *tunnel = session->tunnel;
-  UvSocks *uvsocks = tunnel->uvsocks;
 
   if (nread < 0)
     {
       uvsocks_notify (session_tcp, UVSOCKS_ERROR_TCP_SOCKS_READ, 1);
       return;
     }
-
   if (nread == 0)
     return;
 
@@ -913,10 +898,6 @@ uvsocks_local_new_connection (uv_stream_t *stream,
   UvSocksNotify notify;
 
   notify = UVSOCKS_ERROR_TCP_NEW_CONNECT;
-
-  if (!tunnel)
-    goto fail;
-
   if (status == -1)
     goto fail;
 
@@ -973,10 +954,6 @@ uvsocks_start_local_server (UvSocks       *uvsocks,
   int r;
 
   notify = UVSOCKS_ERROR_TCP_SERVER;
-
-  if (!tunnel)
-    goto fail;
-
   if (tunnel->param.listen_port < 0 || tunnel->param.listen_port > 65535)
     {
       notify = UVSOCKS_ERROR_TCP_PORT;
