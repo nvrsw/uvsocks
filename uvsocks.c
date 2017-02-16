@@ -259,7 +259,7 @@ uvsocks_quit (UvSocks  *uvsocks,
 
 static void
 uvsocks_session_set_stage (UvSocksSession *session,
-                          UvSocksStage    stage)
+                           UvSocksStage    stage)
 {
   session->stage = stage;
 }
@@ -380,6 +380,24 @@ uvsocks_start_read (UvSocksSessionTcp *socks_tcp)
 }
 
 static void
+uvsocks_notify (UvSocksSessionTcp *session_tcp,
+                UvSocksNotify      notify,
+                int                remove_session)
+{
+  UvSocksSession *session = session_tcp->session;
+  UvSocksTunnel *tunnel = session->tunnel;
+  UvSocks *uvsocks = tunnel->uvsocks;
+
+  if (uvsocks->callback_func)
+    uvsocks->callback_func (uvsocks,
+                            UVSOCKS_ERROR_DNS_RESOLVED,
+                            &tunnel->param,
+                            uvsocks->callback_data);
+  if (remove_session)
+    uvsocks_remove_session (tunnel, session);
+}
+
+static void
 uvsocks_dns_resolved (uv_getaddrinfo_t  *resolver,
                       int                status,
                       struct addrinfo   *resolved)
@@ -392,13 +410,7 @@ uvsocks_dns_resolved (uv_getaddrinfo_t  *resolver,
 
   if (status < 0)
     {
-      if (uvsocks->callback_func)
-        uvsocks->callback_func (uvsocks,
-                                UVSOCKS_ERROR_DNS_RESOLVED,
-                               &tunnel->param,
-                                uvsocks->callback_data);
-
-      uvsocks_remove_session (tunnel, session);
+      uvsocks_notify (session_tcp, UVSOCKS_ERROR_DNS_RESOLVED, 1);
       goto done;
     }
 
@@ -456,13 +468,7 @@ uvsocks_dns_resolve (UvSocks              *uvsocks,
                            &hints);
   if (status)
     {
-      if (uvsocks->callback_func)
-        uvsocks->callback_func (uvsocks,
-                                UVSOCKS_ERROR_DNS_ADDRINFO,
-                               &tunnel->param,
-                                uvsocks->callback_data);
-
-      uvsocks_remove_session (tunnel, session);
+      uvsocks_notify (session_tcp, UVSOCKS_ERROR_DNS_ADDRINFO, 1);
       free (resolver);
     }
 }
@@ -478,21 +484,12 @@ uvsocks_connected (uv_connect_t *connect,
 
   if (status < 0)
     {
-      if (uvsocks->callback_func)
-        uvsocks->callback_func (uvsocks,
-                                UVSOCKS_ERROR_TCP_CONNECTED,
-                               &tunnel->param,
-                                uvsocks->callback_data);
-
-      uvsocks_remove_session (tunnel, session);
+      uvsocks_notify (session_tcp, UVSOCKS_ERROR_TCP_CONNECTED, 1);
       free (connect);
       return;
     }
-  if (uvsocks->callback_func)
-    uvsocks->callback_func (uvsocks,
-                            UVSOCKS_OK_TCP_CONNECTED,
-                            &tunnel->param,
-                            uvsocks->callback_data);
+  uvsocks_notify (session_tcp, UVSOCKS_OK_TCP_CONNECTED, 0);
+
   if (session_tcp->tcp == session->socks.tcp)
     uvsocks_socks_login_req (session_tcp);
   else
@@ -500,13 +497,7 @@ uvsocks_connected (uv_connect_t *connect,
 
   if (uvsocks_start_read (session_tcp))
     {
-      if (uvsocks->callback_func)
-        uvsocks->callback_func (uvsocks,
-                                UVSOCKS_ERROR_TCP_READ_START,
-                                &tunnel->param,
-                                uvsocks->callback_data);
-
-      uvsocks_remove_session (tunnel, session);
+      uvsocks_notify (session_tcp, UVSOCKS_ERROR_TCP_READ_START, 1);
       return;
     }
   free (connect);
@@ -667,13 +658,7 @@ uvsocks_socks_establish_ack (UvSocksSessionTcp *session_tcp,
   if (session->socks.buf[0] != 0x05 ||
       session->socks.buf[1] != 0x00)
     {
-      if (uvsocks->callback_func)
-        uvsocks->callback_func (uvsocks,
-                                UVSOCKS_ERROR_SOCKS_COMMAND,
-                               &tunnel->param,
-                                uvsocks->callback_data);
-
-      uvsocks_remove_session (tunnel, session);
+      uvsocks_notify (session_tcp, UVSOCKS_ERROR_SOCKS_COMMAND, 1);
       return 1;
     }
 
@@ -686,11 +671,7 @@ uvsocks_socks_establish_ack (UvSocksSessionTcp *session_tcp,
       port = htons(port);
 
       tunnel->param.listen_port = port;
-      if (uvsocks->callback_func)
-        uvsocks->callback_func (uvsocks,
-                                UVSOCKS_OK_SOCKS_BIND,
-                               &tunnel->param,
-                                uvsocks->callback_data);
+      uvsocks_notify (session_tcp, UVSOCKS_OK_SOCKS_BIND, 0);
       uvsocks_session_set_stage (session, UVSOCKS_STAGE_BIND);
       return 0;
     }
@@ -706,34 +687,17 @@ uvsocks_socks_establish_ack (UvSocksSessionTcp *session_tcp,
       return 0;
     }
 
-  if (uvsocks->callback_func)
-    uvsocks->callback_func (uvsocks,
-                            UVSOCKS_OK_SOCKS_CONNECT,
-                            &tunnel->param,
-                            uvsocks->callback_data);
-
+  uvsocks_notify (session_tcp, UVSOCKS_OK_SOCKS_CONNECT, 0);
   uvsocks_session_set_stage (session, UVSOCKS_STAGE_TUNNEL);
   if (uvsocks_start_read (&session->local))
     {
-      if (uvsocks->callback_func)
-        uvsocks->callback_func (uvsocks,
-                                UVSOCKS_ERROR_TCP_READ_START,
-                                &tunnel->param,
-                                uvsocks->callback_data);
-
-      uvsocks_remove_session (tunnel, session);
+      uvsocks_notify (session_tcp, UVSOCKS_ERROR_TCP_READ_START, 1);
       return 1;
     }
   uv_read_stop ((uv_stream_t *)session->socks.tcp);
   if (uvsocks_start_read (&session->socks))
     {
-      if (uvsocks->callback_func)
-        uvsocks->callback_func (uvsocks,
-                                UVSOCKS_ERROR_TCP_READ_START,
-                                &tunnel->param,
-                                uvsocks->callback_data);
-
-      uvsocks_remove_session (tunnel, session);
+      uvsocks_notify (session_tcp, UVSOCKS_ERROR_TCP_READ_START, 1);
       return 1;
     }
   return 0;
@@ -798,13 +762,7 @@ uvsocks_socks_auth_ack (UvSocksSessionTcp *session_tcp,
   if (session->socks.buf[0] != 0x01 ||
       session->socks.buf[1] != UVSOCKS_AUTH_ALLOW)
     {
-      if (uvsocks->callback_func)
-        uvsocks->callback_func (uvsocks,
-                                UVSOCKS_ERROR_SOCKS_AUTHENTICATION,
-                               &tunnel->param,
-                                uvsocks->callback_data);
-
-      uvsocks_remove_session (tunnel, session);
+      uvsocks_notify (session_tcp, UVSOCKS_ERROR_SOCKS_AUTHENTICATION, 1);
       return 1;
     }
   uvsocks_socks_establish_req (session_tcp);
@@ -860,13 +818,7 @@ uvsocks_socks_login_ack (UvSocksSessionTcp *session_tcp,
   if (session->socks.buf[0] != 0x05 ||
       session->socks.buf[1] != UVSOCKS_AUTH_PASSWD)
     {
-      if (uvsocks->callback_func)
-        uvsocks->callback_func (uvsocks,
-                                UVSOCKS_ERROR_SOCKS_HANDSHAKE,
-                               &tunnel->param,
-                                uvsocks->callback_data);
-
-      uvsocks_remove_session (tunnel, session);
+      uvsocks_notify (session_tcp, UVSOCKS_ERROR_SOCKS_HANDSHAKE, 1);
       return 1;
     }
   uvsocks_socks_auth_req (session_tcp);
@@ -885,13 +837,7 @@ uvsocks_read (uv_stream_t    *stream,
 
   if (nread < 0)
     {
-      if (uvsocks->callback_func)
-        uvsocks->callback_func (uvsocks,
-                                UVSOCKS_ERROR_TCP_SOCKS_READ,
-                               &tunnel->param,
-                                uvsocks->callback_data);
-
-      uvsocks_remove_session (tunnel, session);
+      uvsocks_notify (session_tcp, UVSOCKS_ERROR_TCP_SOCKS_READ, 1);
       return;
     }
 
