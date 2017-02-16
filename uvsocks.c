@@ -91,6 +91,7 @@ struct _UvSocksSessionTcp
 
   uv_tcp_t             *tcp;
   char                 *buf;
+  size_t                read;
   uv_alloc_cb           alloc_cb;
   uv_read_cb            read_cb;
   UvSocksSessionTcp    *write;
@@ -297,11 +298,11 @@ uvsocks_alloc_buffer (uv_handle_t *handle,
   UvSocksSessionTcp *session_tcp = handle->data;
   size_t size;
 
-  size = UVSOCKS_BUF_MAX;
+  size = UVSOCKS_BUF_MAX - session_tcp->read;
   if (size > suggested_size)
     size = suggested_size;
 
-  buf->base = session_tcp->buf;
+  buf->base = &session_tcp->buf[session_tcp->read];
   buf->len = UV_BUF_LEN (size);
 }
 
@@ -540,17 +541,10 @@ uvsocks_write_packet (UvSocksSessionTcp *session_tcp,
                       char              *packet,
                       size_t             size)
 {
-  int ret;
   uv_buf_t buf;
 
   buf = uv_buf_init (packet, (uint32_t) size);
-  ret = uv_try_write ((uv_stream_t*)session_tcp->tcp, &buf, 1);
-
-  if (ret == UV_ENOSYS || ret == UV_EAGAIN)
-    {
-
-    }
-  return ret;
+  return uv_try_write ((uv_stream_t*)session_tcp->tcp, &buf, 1);
 }
 
 static void
@@ -820,6 +814,7 @@ uvsocks_read (uv_stream_t    *stream,
 {
   UvSocksSessionTcp *session_tcp = stream->data;
   UvSocksSession *session = session_tcp->session;
+  int ret;
 
   if (nread < 0)
     {
@@ -831,7 +826,15 @@ uvsocks_read (uv_stream_t    *stream,
 
   if (session->stage == UVSOCKS_STAGE_TUNNEL)
     {
-      uvsocks_write_packet (session_tcp->write, session_tcp->buf, nread);
+      session_tcp->read += nread;
+      ret = uvsocks_write_packet (session_tcp->write, session_tcp->buf, session_tcp->read);
+      if (ret < 0)
+        {
+          if (ret == UV_ENOSYS || ret == UV_EAGAIN)
+            return;
+          uvsocks_notify (session_tcp, UVSOCKS_ERROR_TCP_SOCKS_READ, 1);
+        }
+      session_tcp->read -= ret;
       return;
     }
   if (session->stage == UVSOCKS_STAGE_HANDSHAKE)
@@ -869,12 +872,14 @@ uvsocks_create_session (UvSocksTunnel  *tunnel)
     return NULL;
 
   session->local.buf = malloc (UVSOCKS_BUF_MAX);
+  session->local.read = 0;
   session->local.session = session;
   session->local.alloc_cb = uvsocks_alloc_buffer;
   session->local.read_cb = uvsocks_read;
   session->local.write = &session->socks;
 
   session->socks.buf = malloc (UVSOCKS_BUF_MAX);
+  session->socks.read = 0;
   session->socks.session = session;
   session->socks.alloc_cb = uvsocks_alloc_buffer;
   session->socks.read_cb = uvsocks_read;
