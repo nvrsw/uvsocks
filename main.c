@@ -165,6 +165,8 @@ main_get_notify (UvSocksNotify  notify)
         return "UVSOCKS_ERROR_SOCKS_COMMAND";
       case UVSOCKS_ERROR_SOCKS_CMD_BIND:
         return "UVSOCKS_ERROR_SOCKS_CMD_BIND";
+      case UVSOCKS_ERROR_TCP_INSUFFICIENT_BUFFER:
+        return "UVSOCKS_ERROR_TCP_INSUFFICIENT_BUFFER";
     }
   return "UNKNOWN";
 }

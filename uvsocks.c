@@ -154,8 +154,9 @@ struct _UvSocksDnsResolve
 typedef struct _UvSocksPacketReq UvSocksPacketReq;
 struct _UvSocksPacketReq
 {
-  uv_write_t  req;
-  uv_buf_t    buf;
+  UvSocksSessionTcp *restart_tcp;
+  uv_write_t         req;
+  uv_buf_t           buf;
 };
 
 static void
@@ -302,6 +303,9 @@ uvsocks_alloc_buffer (uv_handle_t *handle,
   if (size > suggested_size)
     size = suggested_size;
 
+  if (size <= 0)
+    return;
+
   buf->base = &session_tcp->buf[session_tcp->read];
   buf->len = UV_BUF_LEN (size);
 }
@@ -391,7 +395,7 @@ uvsocks_notify (UvSocksSessionTcp *session_tcp,
 
   if (uvsocks->callback_func)
     uvsocks->callback_func (uvsocks,
-                            UVSOCKS_ERROR_DNS_RESOLVED,
+                            notify,
                             &tunnel->param,
                             uvsocks->callback_data);
   if (remove_session)
@@ -545,6 +549,45 @@ uvsocks_write_packet (UvSocksSessionTcp *session_tcp,
 
   buf = uv_buf_init (packet, (uint32_t) size);
   return uv_try_write ((uv_stream_t*)session_tcp->tcp, &buf, 1);
+}
+
+static void
+uvsocks_free_packet_req (uv_write_t *req,
+                         int         status)
+{
+  UvSocksPacketReq *wr = (UvSocksPacketReq *) req;
+
+  if (status < 0)
+    return;
+
+  if (wr->restart_tcp)
+    {
+      wr->restart_tcp->read = 0;
+      uv_read_start ((uv_stream_t *) wr->restart_tcp->tcp,
+                                     wr->restart_tcp->alloc_cb,
+                                     wr->restart_tcp->read_cb);
+    }
+  free (wr);
+}
+
+static void
+uvsocks_write_packet0 (UvSocksSessionTcp *session_tcp,
+                       UvSocksSessionTcp *restart_tcp,
+                       char              *packet,
+                       size_t             size)
+{
+  UvSocksPacketReq *req;
+
+  req = (UvSocksPacketReq *) malloc (sizeof (*req));
+  req->buf = uv_buf_init (packet, (unsigned int) size);
+  req->restart_tcp = restart_tcp;
+  if (restart_tcp)
+    uv_read_stop ((uv_stream_t *) restart_tcp->tcp);
+  uv_write ((uv_write_t *) req,
+            (uv_stream_t *) session_tcp->tcp,
+            &req->buf,
+             1,
+             uvsocks_free_packet_req);
 }
 
 static void
@@ -814,7 +857,6 @@ uvsocks_read (uv_stream_t    *stream,
 {
   UvSocksSessionTcp *session_tcp = stream->data;
   UvSocksSession *session = session_tcp->session;
-  int ret;
 
   if (nread < 0)
     {
@@ -826,12 +868,30 @@ uvsocks_read (uv_stream_t    *stream,
 
   if (session->stage == UVSOCKS_STAGE_TUNNEL)
     {
+      int ret;
+
       session_tcp->read += nread;
-      ret = uvsocks_write_packet (session_tcp->write, session_tcp->buf, session_tcp->read);
+      ret = uvsocks_write_packet (session_tcp->write,
+                                  session_tcp->buf,
+                                  session_tcp->read);
       if (ret < 0)
         {
           if (ret == UV_ENOSYS || ret == UV_EAGAIN)
-            return;
+            {
+              #if 0
+              uvsocks_write_packet0 (session_tcp->write,
+                                     session_tcp,
+                                     session_tcp->buf,
+                                     session_tcp->read);
+              #endif
+              if (UVSOCKS_BUF_MAX - session_tcp->read <= 0)
+                uvsocks_write_packet0 (session_tcp->write,
+                                       session_tcp,
+                                       session_tcp->buf,
+                                       session_tcp->read);
+
+              return;
+            }
           uvsocks_notify (session_tcp, UVSOCKS_ERROR_TCP_SOCKS_READ, 1);
         }
       session_tcp->read -= ret;
