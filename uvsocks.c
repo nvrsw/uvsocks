@@ -866,6 +866,18 @@ uvsocks_read (uv_stream_t    *stream,
   if (nread == 0)
     return;
 
+#if 0
+  /* only use uv_write */
+  if (session->stage == UVSOCKS_STAGE_TUNNEL)
+    {
+      session_tcp->read = 0;
+      uvsocks_write_packet0 (session_tcp->write,
+                             NULL,
+                             session_tcp->buf,
+                             nread);
+      return;
+    }
+#endif
   if (session->stage == UVSOCKS_STAGE_TUNNEL)
     {
       int ret;
