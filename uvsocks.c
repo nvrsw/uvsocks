@@ -646,7 +646,7 @@ uvsocks_socks_establish_req (UvSocksSessionTcp *session_tcp)
                   &addr);
       port = htons (tunnel->param.listen_port);
     }
-  memcpy (&packet[packet_size], &addr.sin_addr.S_un.S_addr, 4);
+  memcpy (&packet[packet_size], &addr.sin_addr.s_addr, 4);
   packet_size += 4;
   memcpy (&packet[packet_size], &port, 2);
   packet_size += 2;
@@ -974,6 +974,8 @@ uvsocks_local_new_connection (uv_stream_t *stream,
   UvSocksSession *session;
   UvSocksNotify notify;
 
+  session = NULL;
+  
   notify = UVSOCKS_ERROR_TCP_NEW_CONNECT;
   if (status == -1)
     goto fail;
@@ -1001,14 +1003,14 @@ uvsocks_local_new_connection (uv_stream_t *stream,
   if (uvsocks->callback_func)
     uvsocks->callback_func (uvsocks,
                             notify,
-                           &tunnel->param,
+                            &tunnel->param,
                             uvsocks->callback_data);
 
   uvsocks_connect (uvsocks,
                    uvsocks->host,
                    uvsocks->port,
                    uvsocks_connect_real,
-                  &session->socks);
+                   &session->socks);
   return;
  
 fail:
