@@ -413,9 +413,9 @@ main (int    argc,
   main_setup (main_loop);
 
   if (main_get_param (argc, argv))
-    goto fail   ;
+    goto fail;
 
-  main_uvsocks = uvsocks_new (main_loop,
+  main_uvsocks = uvsocks_new (NULL,
                               main_host,
                               main_port,
                               main_user,

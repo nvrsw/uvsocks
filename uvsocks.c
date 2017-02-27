@@ -116,9 +116,11 @@ struct _UvSocksTunnel
 
 struct _UvSocks
 {
+  int                    self_loop;
   uv_loop_t             *loop;
   AQueue                *queue;
   uv_async_t             async;
+  uv_thread_t            thread;
 
   char                   host[64];
   int                    port;
@@ -202,6 +204,14 @@ uvsocks_send_async (UvSocks      *uvsocks,
   uv_async_send (&uvsocks->async);
 }
 
+static void
+uvsocks_thread_main (void *arg)
+{
+  UvSocks *uvsocks = arg;
+
+  uv_run (uvsocks->loop, UV_RUN_DEFAULT);
+}
+
 UvSocks *
 uvsocks_new (void              *uv_loop,
              const char        *host,
@@ -217,14 +227,20 @@ uvsocks_new (void              *uv_loop,
   UvSocksTunnel *tunnels;
   int i;
 
-  if (!uv_loop)
-    uv_loop = uv_default_loop ();
 
   uvsocks = calloc (sizeof (UvSocks), 1);
   if (!uvsocks)
     return NULL;
 
-  uvsocks->loop = uv_loop;
+  if (!uv_loop)
+  {
+    uvsocks->self_loop = 1;
+    uvsocks->loop = malloc (sizeof (*uvsocks->loop));
+    uv_loop_init(uvsocks->loop);
+  }
+  else
+    uvsocks->loop = uv_loop;
+
   uvsocks->queue = aqueue_new (128);
   uv_async_init (uvsocks->loop, &uvsocks->async, uvsocks_receive_async);
   uvsocks->async.data = uvsocks;
@@ -249,6 +265,8 @@ uvsocks_new (void              *uv_loop,
   uvsocks->callback_func = callback_func;
   uvsocks->callback_data = callback_data;
 
+  if (uvsocks->self_loop)
+    uv_thread_create (&uvsocks->thread, uvsocks_thread_main, uvsocks);
   return uvsocks;
 }
 
@@ -370,8 +388,14 @@ uvsocks_free (UvSocks *uvsocks)
   uvsocks_free_tunnel (uvsocks);
 
   uvsocks_send_async (uvsocks, uvsocks_quit, NULL, NULL);
+  if (uvsocks->self_loop)
+    uv_thread_join (&uvsocks->thread);
   uv_close ((uv_handle_t *) &uvsocks->async, NULL);
-  uv_loop_close (uvsocks->loop);
+  if (uvsocks->self_loop)
+    {
+      uv_loop_close (uvsocks->loop);
+      free (uvsocks->loop);
+    }
 
   free (uvsocks);
 }
