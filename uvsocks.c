@@ -724,6 +724,7 @@ uvsocks_socks_establish_ack (UvSocksSessionTcp *session_tcp,
       memcpy (&port, &session->socks.buf[8], 2);
       port = htons(port);
 
+      strcpy (tunnel->param.listen_host, uvsocks->host);
       tunnel->param.listen_port = port;
       uvsocks_notify (session_tcp, UVSOCKS_OK_SOCKS_BIND, 0);
       uvsocks_session_set_stage (session, UVSOCKS_STAGE_BIND);
@@ -1139,4 +1140,64 @@ uvsocks_run (UvSocks *uvsocks)
       }
 
   return UVSOCKS_OK;
+}
+
+char *
+uvsocks_get_notify (UvSocksNotify notify)
+{
+  switch (notify)
+    {
+      case UVSOCKS_OK:
+        return "normal success";
+      case UVSOCKS_OK_TCP_SERVER:
+        return "tcp success: tcp server";
+      case UVSOCKS_OK_TCP_NEW_CONNECT:
+        return "tcp success: new connect";
+      case UVSOCKS_OK_TCP_CONNECTED:
+        return "socks success: connected";
+      case UVSOCKS_OK_SOCKS_CONNECT:
+        return "socks success: connect";
+      case UVSOCKS_OK_SOCKS_BIND:
+        return "socks success: bind";
+      case UVSOCKS_ERROR:
+        return "normal error";
+      case UVSOCKS_ERROR_TCP_SERVER:
+        return "tcp error: server";
+      case UVSOCKS_ERROR_TCP_PORT:
+        return "tcp error: port";
+      case UVSOCKS_ERROR_TCP_BIND:
+        return "tcp error: bind";
+      case UVSOCKS_ERROR_TCP_LISTEN:
+        return "tcp error: listen";
+      case UVSOCKS_ERROR_TCP_NEW_CONNECT:
+        return "tcp error: new connect";
+      case UVSOCKS_ERROR_TCP_CREATE_SESSION:
+        return "tcp error: create session";
+      case UVSOCKS_ERROR_TCP_ACCEPT:
+        return "tcp error: accept";
+      case UVSOCKS_ERROR_DNS_RESOLVED:
+        return "dns error: resolved";
+      case UVSOCKS_ERROR_DNS_ADDRINFO:
+        return "dns error: address info";
+      case UVSOCKS_ERROR_TCP_CONNECTED:
+        return "tcp error: connected";
+      case UVSOCKS_ERROR_TCP_READ_START:
+        return "tcp error: read start";
+      case UVSOCKS_ERROR_TCP_SOCKS_READ:
+        return "tcp error: socks read";
+      case UVSOCKS_ERROR_TCP_LOCAL_READ:
+        return "tcp error: local read";
+      case UVSOCKS_ERROR_SOCKS_HANDSHAKE:
+        return "socks error: handshake";
+      case UVSOCKS_ERROR_SOCKS_AUTHENTICATION:;
+        return "socks error: authentication";
+      case UVSOCKS_ERROR_SOCKS_COMMAND:
+        return "socks error: command";
+      case UVSOCKS_ERROR_SOCKS_CMD_BIND:
+        return "socks error: bind";
+      case UVSOCKS_ERROR_TCP_INSUFFICIENT_BUFFER:
+        return "tcp error: insufficient buffer";
+    }
+
+  return "unknown error";
 }
