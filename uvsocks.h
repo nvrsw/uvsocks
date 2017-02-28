@@ -10,13 +10,13 @@ typedef enum _UvSocksNotify UvSocksNotify;
 enum _UvSocksNotify
 {
   UVSOCKS_OK                            = 0,
-  UVSOCKS_OK_TCP_SERVER                 = 1,
+  UVSOCKS_OK_TCP_LOCAL_SERVER           = 1,
   UVSOCKS_OK_TCP_NEW_CONNECT            = 2,
   UVSOCKS_OK_TCP_CONNECTED              = 3,
   UVSOCKS_OK_SOCKS_CONNECT              = 4,
   UVSOCKS_OK_SOCKS_BIND                 = 5,
   UVSOCKS_ERROR                         = 1001,
-  UVSOCKS_ERROR_TCP_SERVER              = 1002,
+  UVSOCKS_ERROR_TCP_LOCAL_SERVER        = 1002,
   UVSOCKS_ERROR_TCP_PORT                = 1003,
   UVSOCKS_ERROR_TCP_BIND                = 1004,
   UVSOCKS_ERROR_TCP_LISTEN              = 1005,

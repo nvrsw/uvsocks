@@ -1057,7 +1057,7 @@ uvsocks_start_local_server (UvSocks       *uvsocks,
   int namelen;
   int r;
 
-  notify = UVSOCKS_ERROR_TCP_SERVER;
+  notify = UVSOCKS_ERROR_TCP_LOCAL_SERVER;
   if (tunnel->param.listen_port < 0 || tunnel->param.listen_port > 65535)
     {
       notify = UVSOCKS_ERROR_TCP_PORT;
@@ -1091,7 +1091,7 @@ uvsocks_start_local_server (UvSocks       *uvsocks,
       goto fail;
     }
 
-  notify = UVSOCKS_OK_TCP_SERVER;
+  notify = UVSOCKS_OK_TCP_LOCAL_SERVER;
   if (uvsocks->callback_func)
     uvsocks->callback_func (uvsocks,
                             notify,
@@ -1149,8 +1149,8 @@ uvsocks_get_notify (UvSocksNotify notify)
     {
       case UVSOCKS_OK:
         return "normal success";
-      case UVSOCKS_OK_TCP_SERVER:
-        return "tcp success: tcp server";
+      case UVSOCKS_OK_TCP_LOCAL_SERVER:
+        return "tcp success: local server";
       case UVSOCKS_OK_TCP_NEW_CONNECT:
         return "tcp success: new connect";
       case UVSOCKS_OK_TCP_CONNECTED:
@@ -1161,8 +1161,8 @@ uvsocks_get_notify (UvSocksNotify notify)
         return "socks success: bind";
       case UVSOCKS_ERROR:
         return "normal error";
-      case UVSOCKS_ERROR_TCP_SERVER:
-        return "tcp error: server";
+      case UVSOCKS_ERROR_TCP_LOCAL_SERVER:
+        return "tcp error: local server";
       case UVSOCKS_ERROR_TCP_PORT:
         return "tcp error: port";
       case UVSOCKS_ERROR_TCP_BIND:
