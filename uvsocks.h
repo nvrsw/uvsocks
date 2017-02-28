@@ -68,4 +68,7 @@ uvsocks_run (UvSocks *uvsocks);
 void
 uvsocks_free (UvSocks *uvsocks);
 
+char *
+uvsocks_get_notify (UvSocksNotify notify);
+
 #endif /* __UVSOCKS_H__ */

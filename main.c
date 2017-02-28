@@ -112,65 +112,6 @@ main_cleanup (void)
   uv_signal_stop (&sighup);
 }
 
-static char *
-main_get_notify (UvSocksNotify  notify)
-{
-  switch (notify)
-    {
-      case UVSOCKS_OK:
-        return "UVSOCKS_OK";
-      case UVSOCKS_OK_TCP_SERVER:
-        return "UVSOCKS_OK_TCP_SERVER";
-      case UVSOCKS_OK_TCP_NEW_CONNECT:
-        return "UVSOCKS_OK_TCP_NEW_CONNECT";
-      case UVSOCKS_OK_TCP_CONNECTED:
-        return "UVSOCKS_OK_TCP_CONNECTED";
-      case UVSOCKS_OK_SOCKS_CONNECT:
-        return "UVSOCKS_OK_SOCKS_CONNECT";
-      case UVSOCKS_OK_SOCKS_BIND:
-        return "UVSOCKS_OK_SOCKS_BIND";
-      case UVSOCKS_ERROR:
-        return "UVSOCKS_ERROR";
-      case UVSOCKS_ERROR_TCP_SERVER:
-        return "UVSOCKS_ERROR_TCP_SERVER";
-      case UVSOCKS_ERROR_TCP_PORT:
-        return "UVSOCKS_ERROR_TCP_PORT";
-      case UVSOCKS_ERROR_TCP_BIND:
-        return "UVSOCKS_ERROR_TCP_BIND";
-      case UVSOCKS_ERROR_TCP_LISTEN:
-        return "UVSOCKS_ERROR_TCP_LISTEN";
-      case UVSOCKS_ERROR_TCP_NEW_CONNECT:
-        return "UVSOCKS_ERROR_TCP_NEW_CONNECT";
-      case UVSOCKS_ERROR_TCP_CREATE_SESSION:
-        return "UVSOCKS_ERROR_TCP_CREATE_SESSION";
-      case UVSOCKS_ERROR_TCP_ACCEPT:
-        return "UVSOCKS_ERROR_TCP_ACCEPT";
-      case UVSOCKS_ERROR_DNS_RESOLVED:
-        return "UVSOCKS_ERROR_DNS_RESOLVED";
-      case UVSOCKS_ERROR_DNS_ADDRINFO:
-        return "UVSOCKS_ERROR_DNS_ADDRINFO";
-      case UVSOCKS_ERROR_TCP_CONNECTED:
-        return "UVSOCKS_ERROR_TCP_CONNECTED";
-      case UVSOCKS_ERROR_TCP_READ_START:
-        return "UVSOCKS_ERROR_TCP_READ_START";
-      case UVSOCKS_ERROR_TCP_SOCKS_READ:
-        return "UVSOCKS_ERROR_TCP_SOCKS_READ";
-      case UVSOCKS_ERROR_TCP_LOCAL_READ:
-        return "UVSOCKS_ERROR_TCP_LOCAL_READ";
-      case UVSOCKS_ERROR_SOCKS_HANDSHAKE:
-        return "UVSOCKS_ERROR_SOCKS_HANDSHAKE";
-      case UVSOCKS_ERROR_SOCKS_AUTHENTICATION:
-        return "UVSOCKS_ERROR_SOCKS_AUTHENTICATION";
-      case UVSOCKS_ERROR_SOCKS_COMMAND:
-        return "UVSOCKS_ERROR_SOCKS_COMMAND";
-      case UVSOCKS_ERROR_SOCKS_CMD_BIND:
-        return "UVSOCKS_ERROR_SOCKS_CMD_BIND";
-      case UVSOCKS_ERROR_TCP_INSUFFICIENT_BUFFER:
-        return "UVSOCKS_ERROR_TCP_INSUFFICIENT_BUFFER";
-    }
-  return "UNKNOWN";
-}
-
 static void
 main_uvsocks_notify (UvSocks       *uvsocks,
                      UvSocksNotify  notify,
@@ -178,9 +119,8 @@ main_uvsocks_notify (UvSocks       *uvsocks,
                      void          *data)
 {
 	fprintf (stderr,
-				  "main[%s]: is_forward[%d] [%s:%d -> %s:%d]\n",
-           main_get_notify (notify),
-           param->is_forward,
+				  "main[%s] %s:%d -> %s:%d\n",
+           uvsocks_get_notify (notify),
            param->destination_host,
            param->destination_port,
            param->listen_host,
