@@ -27,6 +27,14 @@
 #include <unistd.h>
 #endif
 
+#ifdef CONFIG_NEED_OFFSETOF
+#define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *) 0)->MEMBER)
+#endif
+
+#ifdef _WIN32
+#define container_of(ptr, type, member) (type *)((char *)ptr - offsetof (type, member))
+#endif
+
 #define UVSOCKS_BUF_MAX (1024 * 1024)
 
 #ifndef UV_BUF_LEN
@@ -93,6 +101,7 @@ struct _UvSocksSessionLink
   char                 *buf;
   size_t                read;
   UvSocksSessionLink   *write_link;
+  uv_write_t            write_req;
 };
 
 struct _UvSocksSession
@@ -584,39 +593,35 @@ static void
 uvsocks_free_packet_req (uv_write_t *req,
                          int         status)
 {
-  UvSocksPacketReq *wr = (UvSocksPacketReq *) req;
+  UvSocksSessionLink *link = container_of(req, UvSocksSessionLink, write_req);
 
-  if (status < 0)
-    return;
-
-  if (wr->restart_link)
+  if (link->write_link)
     {
-      wr->restart_link->read = 0;
-      uv_read_start ((uv_stream_t *) wr->restart_link->tcp,
+      link->write_link->read = 0;
+      uv_read_start ((uv_stream_t *) link->tcp,
                                      uvsocks_alloc_buffer,
                                      uvsocks_read);
     }
-  free (wr);
 }
 
 static void
 uvsocks_write_packet0 (UvSocksSessionLink *link,
-                       UvSocksSessionLink *restart_link,
                        char               *packet,
-                       size_t              size)
+                       size_t              len)
 {
-  UvSocksPacketReq *req;
+  uv_buf_t bufs[1];
 
-  req = (UvSocksPacketReq *) malloc (sizeof (*req));
-  req->buf = uv_buf_init (packet, (unsigned int) size);
-  req->restart_link = restart_link;
-  if (restart_link)
-    uv_read_stop ((uv_stream_t *) restart_link->tcp);
-  uv_write ((uv_write_t *) req,
-            (uv_stream_t *) link->tcp,
-            &req->buf,
-             1,
-             uvsocks_free_packet_req);
+  if (link->write_link)
+    uv_read_stop ((uv_stream_t *) link->tcp);
+
+  bufs[0].base = packet;
+  bufs[0].len = UV_BUF_LEN (len);
+
+  uv_write (&link->write_req,
+            (uv_stream_t *) link->write_link->tcp,
+            bufs,
+            1,
+            uvsocks_free_packet_req);
 }
 
 static void
@@ -904,8 +909,7 @@ uvsocks_read (uv_stream_t    *stream,
           if (ret == UV_ENOSYS || ret == UV_EAGAIN)
             {
               if (UVSOCKS_BUF_MAX <= link->read)
-                uvsocks_write_packet0 (link->write_link,
-                                       link,
+                uvsocks_write_packet0 (link,
                                        link->buf,
                                        link->read);
 
