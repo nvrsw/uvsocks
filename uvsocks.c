@@ -751,12 +751,7 @@ uvsocks_socks_establish_ack (UvSocksSessionLink *link,
       uvsocks_notify (link, UVSOCKS_ERROR_TCP_READ_START, 1);
       return 1;
     }
-  uv_read_stop ((uv_stream_t *)session->socks.tcp);
-  if (uvsocks_start_read (&session->socks))
-    {
-      uvsocks_notify (link, UVSOCKS_ERROR_TCP_READ_START, 1);
-      return 1;
-    }
+
   return 0;
 }
 
@@ -905,7 +900,7 @@ uvsocks_read (uv_stream_t    *stream,
         {
           if (ret == UV_ENOSYS || ret == UV_EAGAIN)
             {
-              if (UVSOCKS_BUF_MAX <= session_tcp->read)
+              if (UVSOCKS_BUF_MAX <= link->read)
                 uvsocks_write_packet0 (link->write_link,
                                        link,
                                        link->buf,
@@ -1065,7 +1060,7 @@ uvsocks_start_local_server (UvSocks       *uvsocks,
     int namelen;
 
     namelen = sizeof (name);
-    uv_tcp_getsockname (tunnel->server, (struct sockaddr *) &name, &namelen);
+    uv_tcp_getsockname (tunnel->listen_tcp, (struct sockaddr *) &name, &namelen);
     tunnel->param.listen_port = ntohs (name.sin_port);
   }
 
