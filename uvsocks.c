@@ -903,7 +903,7 @@ uvsocks_read (uv_stream_t    *stream,
         {
           if (ret == UV_ENOSYS || ret == UV_EAGAIN)
             {
-              if (UVSOCKS_BUF_MAX - link->read <= 0)
+              if (UVSOCKS_BUF_MAX <= session_tcp->read)
                 uvsocks_write_packet0 (link->write_link,
                                        link,
                                        link->buf,
