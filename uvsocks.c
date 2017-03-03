@@ -109,7 +109,7 @@ struct _UvSocksTunnel
 {
   UvSocks               *uvsocks;
   UvSocksParam           param;
-  uv_tcp_t              *server;
+  uv_tcp_t              *listen_tcp;
   int                    n_sessions;
   UvSocksSession        *sessions[UVSOCKS_SESSION_MAX];
 };
@@ -1048,14 +1048,14 @@ uvsocks_start_local_server (UvSocks       *uvsocks,
 
   uv_ip4_addr (tunnel->param.listen_host, tunnel->param.listen_port, &addr);
 
-  tunnel->server = malloc (sizeof (*tunnel->server));
-  if (!tunnel->server)
+  tunnel->listen_tcp = malloc (sizeof (*tunnel->listen_tcp));
+  if (!tunnel->listen_tcp)
     goto fail;
-  tunnel->server->data = tunnel;
+  tunnel->listen_tcp->data = tunnel;
 
-  uv_tcp_init (uvsocks->loop, tunnel->server);
+  uv_tcp_init (uvsocks->loop, tunnel->listen_tcp);
 
-  r = uv_tcp_bind (tunnel->server, (const struct sockaddr *) &addr, 0);
+  r = uv_tcp_bind (tunnel->listen_tcp, (const struct sockaddr *) &addr, 0);
   if (r < 0)
     {
       notify = UVSOCKS_ERROR_TCP_BIND;
@@ -1063,10 +1063,10 @@ uvsocks_start_local_server (UvSocks       *uvsocks,
     }
 
   namelen = sizeof (name);
-  uv_tcp_getsockname (tunnel->server, (struct sockaddr *) &name, &namelen);
+  uv_tcp_getsockname (tunnel->listen_tcp, (struct sockaddr *) &name, &namelen);
   tunnel->param.listen_port = ntohs (name.sin_port);
 
-  r = uv_listen ((uv_stream_t *) tunnel->server, 16, uvsocks_local_new_connection);
+  r = uv_listen ((uv_stream_t *) tunnel->listen_tcp, 16, uvsocks_local_new_connection);
   if (r < 0)
     {
       notify = UVSOCKS_ERROR_TCP_LISTEN;
@@ -1088,8 +1088,8 @@ fail:
                             notify,
                            &tunnel->param,
                             uvsocks->callback_data);
-  if (tunnel->server)
-    free (tunnel->server);
+  if (tunnel->listen_tcp)
+    free (tunnel->listen_tcp);
   return notify;
 }
 
