@@ -97,9 +97,9 @@ struct _UvSocksSessionLink
 {
   UvSocksSession       *session;
 
-  uv_tcp_t             *tcp;
-  char                 *buf;
-  size_t                read;
+  uv_tcp_t             *read_tcp;
+  char                 *read_buf;
+  size_t                read_buf_len;
   UvSocksSessionLink   *write_link;
   uv_write_t            write_req;
 };
@@ -329,14 +329,14 @@ uvsocks_alloc_buffer (uv_handle_t *handle,
   UvSocksSessionLink *link = handle->data;
   size_t size;
 
-  size = UVSOCKS_BUF_MAX - link->read;
+  size = UVSOCKS_BUF_MAX - link->read_buf_len;
   if (size > suggested_size)
     size = suggested_size;
 
   if (size <= 0)
     return;
 
-  buf->base = &link->buf[link->read];
+  buf->base = &link->read_buf[link->read_buf_len];
   buf->len = UV_BUF_LEN (size);
 }
 
@@ -354,22 +354,22 @@ uvsocks_remove_session (UvSocksTunnel  *tunnel,
     return;
 
   uvsocks_set_empty_session (tunnel, session);
-  if (session->socks.tcp)
+  if (session->socks.read_tcp)
     {
-      uv_read_stop ((uv_stream_t *)session->socks.tcp);
-      uv_close ((uv_handle_t *) session->socks.tcp, uvsocks_free_handle);
+      uv_read_stop ((uv_stream_t *)session->socks.read_tcp);
+      uv_close ((uv_handle_t *) session->socks.read_tcp, uvsocks_free_handle);
     }
 
-  if (session->local.tcp)
+  if (session->local.read_tcp)
     {
-      uv_read_stop ((uv_stream_t *) session->local.tcp);
-      uv_close ((uv_handle_t *) session->local.tcp, uvsocks_free_handle);
+      uv_read_stop ((uv_stream_t *) session->local.read_tcp);
+      uv_close ((uv_handle_t *) session->local.read_tcp, uvsocks_free_handle);
     }
 
-  if (session->socks.buf)
-    free (session->socks.buf);
-  if (session->local.buf)
-    free (session->local.buf);
+  if (session->socks.read_buf)
+    free (session->socks.read_buf);
+  if (session->local.read_buf)
+    free (session->local.read_buf);
  
   free (session);
   tunnel->n_sessions--;
@@ -415,7 +415,7 @@ uvsocks_free (UvSocks *uvsocks)
 static int
 uvsocks_start_read (UvSocksSessionLink *link)
 {
-  return uv_read_start ((uv_stream_t *) link->tcp,
+  return uv_read_start ((uv_stream_t *) link->read_tcp,
                                         uvsocks_alloc_buffer,
                                         uvsocks_read);
 }
@@ -524,7 +524,7 @@ uvsocks_connected (uv_connect_t *connect,
     }
   uvsocks_notify (link, UVSOCKS_OK_TCP_CONNECTED, 0);
 
-  if (link->tcp == session->socks.tcp)
+  if (link->read_tcp == session->socks.read_tcp)
     uvsocks_socks_login_req (link);
   else
     uvsocks_session_set_stage (session, UVSOCKS_STAGE_TUNNEL);
@@ -549,17 +549,17 @@ uvsocks_connect_real (UvSocksSessionLink *link,
   if (!connect)
     return;
 
-  link->tcp = malloc (sizeof (*link->tcp));
-  if (!link->tcp)
+  link->read_tcp = malloc (sizeof (*link->read_tcp));
+  if (!link->read_tcp)
     return;
 
-  uv_tcp_init (uvsocks->loop, link->tcp);
+  uv_tcp_init (uvsocks->loop, link->read_tcp);
 
-  link->tcp->data = link;
+  link->read_tcp->data = link;
   connect->data = link;
 
   uv_tcp_connect (connect,
-                  link->tcp,
+                  link->read_tcp,
                   (const struct sockaddr *)resolved->ai_addr,
                   uvsocks_connected);
 }
@@ -586,7 +586,7 @@ uvsocks_write_packet (UvSocksSessionLink *link,
   uv_buf_t buf;
 
   buf = uv_buf_init (packet, (uint32_t) size);
-  return uv_try_write ((uv_stream_t*)link->tcp, &buf, 1);
+  return uv_try_write ((uv_stream_t*)link->read_tcp, &buf, 1);
 }
 
 static void
@@ -597,8 +597,8 @@ uvsocks_free_packet_req (uv_write_t *req,
 
   if (link->write_link)
     {
-      link->write_link->read = 0;
-      uv_read_start ((uv_stream_t *) link->tcp,
+      link->write_link->read_buf_len = 0;
+      uv_read_start ((uv_stream_t *) link->read_tcp,
                                      uvsocks_alloc_buffer,
                                      uvsocks_read);
     }
@@ -612,13 +612,13 @@ uvsocks_write_packet0 (UvSocksSessionLink *link,
   uv_buf_t bufs[1];
 
   if (link->write_link)
-    uv_read_stop ((uv_stream_t *) link->tcp);
+    uv_read_stop ((uv_stream_t *) link->read_tcp);
 
   bufs[0].base = packet;
   bufs[0].len = UV_BUF_LEN (len);
 
   uv_write (&link->write_req,
-            (uv_stream_t *) link->write_link->tcp,
+            (uv_stream_t *) link->write_link->read_tcp,
             bufs,
             1,
             uvsocks_free_packet_req);
@@ -719,8 +719,8 @@ uvsocks_socks_establish_ack (UvSocksSessionLink *link,
   //
   //field 6: network byte order port number, 2 bytes
 
-  if (session->socks.buf[0] != 0x05 ||
-      session->socks.buf[1] != 0x00)
+  if (session->socks.read_buf[0] != 0x05 ||
+      session->socks.read_buf[1] != 0x00)
     {
       uvsocks_notify (link, UVSOCKS_ERROR_SOCKS_COMMAND, 1);
       return 1;
@@ -731,7 +731,7 @@ uvsocks_socks_establish_ack (UvSocksSessionLink *link,
     {
       int port;
 
-      memcpy (&port, &session->socks.buf[8], 2);
+      memcpy (&port, &session->socks.read_buf[8], 2);
       port = htons(port);
 
       strcpy (tunnel->param.listen_host, uvsocks->host);
@@ -818,8 +818,8 @@ uvsocks_socks_auth_ack (UvSocksSessionLink *link,
   //any other value = failure, connection must be closed
   if (read < 2)
     return 1;
-  if (session->socks.buf[0] != 0x01 ||
-      session->socks.buf[1] != UVSOCKS_AUTH_ALLOW)
+  if (session->socks.read_buf[0] != 0x01 ||
+      session->socks.read_buf[1] != UVSOCKS_AUTH_ALLOW)
     {
       uvsocks_notify (link, UVSOCKS_ERROR_SOCKS_AUTHENTICATION, 1);
       return 1;
@@ -870,8 +870,8 @@ uvsocks_socks_login_ack (UvSocksSessionLink *link,
   //field 2: chosen authentication method, 1 byte, or 0xFF if no acceptable methods were offered
   if (read < 2)
     return 1;
-  if (session->socks.buf[0] != 0x05 ||
-      session->socks.buf[1] != UVSOCKS_AUTH_PASSWD)
+  if (session->socks.read_buf[0] != 0x05 ||
+      session->socks.read_buf[1] != UVSOCKS_AUTH_PASSWD)
     {
       uvsocks_notify (link, UVSOCKS_ERROR_SOCKS_HANDSHAKE, 1);
       return 1;
@@ -900,40 +900,40 @@ uvsocks_read (uv_stream_t    *stream,
     {
       int ret;
 
-      link->read += nread;
+      link->read_buf_len += nread;
       ret = uvsocks_write_packet (link->write_link,
-                                  link->buf,
-                                  link->read);
+                                  link->read_buf,
+                                  link->read_buf_len);
       if (ret < 0)
         {
           if (ret == UV_ENOSYS || ret == UV_EAGAIN)
             {
-              if (UVSOCKS_BUF_MAX <= link->read)
+              if (UVSOCKS_BUF_MAX <= link->read_buf_len)
                 uvsocks_write_packet0 (link,
-                                       link->buf,
-                                       link->read);
+                                       link->read_buf,
+                                       link->read_buf_len);
 
               return;
             }
           uvsocks_notify (link, UVSOCKS_ERROR_TCP_SOCKS_READ, 1);
         }
-      link->read -= ret;
+      link->read_buf_len -= ret;
       return;
     }
   if (session->stage == UVSOCKS_STAGE_HANDSHAKE)
     {
-      uvsocks_socks_login_ack (link, link->buf, nread);
+      uvsocks_socks_login_ack (link, link->read_buf, nread);
       return;
     }
   if (session->stage == UVSOCKS_STAGE_AUTHENTICATE)
     {
-      uvsocks_socks_auth_ack (link, link->buf, nread);
+      uvsocks_socks_auth_ack (link, link->read_buf, nread);
       return;
     }
   if (session->stage == UVSOCKS_STAGE_ESTABLISH ||
       session->stage == UVSOCKS_STAGE_BIND)
     {
-      uvsocks_socks_establish_ack (link, link->buf, nread);
+      uvsocks_socks_establish_ack (link, link->read_buf, nread);
       return;
     }
 }
@@ -954,13 +954,13 @@ uvsocks_create_session (UvSocksTunnel  *tunnel)
   if (!session)
     return NULL;
 
-  session->local.buf = malloc (UVSOCKS_BUF_MAX);
-  session->local.read = 0;
+  session->local.read_buf = malloc (UVSOCKS_BUF_MAX);
+  session->local.read_buf_len = 0;
   session->local.session = session;
   session->local.write_link = &session->socks;
 
-  session->socks.buf = malloc (UVSOCKS_BUF_MAX);
-  session->socks.read = 0;
+  session->socks.read_buf = malloc (UVSOCKS_BUF_MAX);
+  session->socks.read_buf_len = 0;
   session->socks.session = session;
   session->socks.write_link = &session->local;
 
@@ -994,13 +994,13 @@ uvsocks_local_new_connection (uv_stream_t *stream,
       goto fail;
     }
 
-  session->local.tcp = malloc (sizeof (*session->local.tcp));
-  if (!session->local.tcp)
+  session->local.read_tcp = malloc (sizeof (*session->local.read_tcp));
+  if (!session->local.read_tcp)
     goto fail;
-  session->local.tcp->data = &session->local;
+  session->local.read_tcp->data = &session->local;
 
-  uv_tcp_init (uvsocks->loop, session->local.tcp);
-  if (uv_accept (stream, (uv_stream_t *) session->local.tcp))
+  uv_tcp_init (uvsocks->loop, session->local.read_tcp);
+  if (uv_accept (stream, (uv_stream_t *) session->local.read_tcp))
     {
       notify = UVSOCKS_ERROR_TCP_ACCEPT;
       goto fail;
