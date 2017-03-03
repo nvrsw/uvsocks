@@ -540,10 +540,12 @@ uvsocks_connect_real (UvSocksSessionLink *link,
   link->tcp = malloc (sizeof (*link->tcp));
   if (!link->tcp)
     return;
+
+  uv_tcp_init (uvsocks->loop, link->tcp);
+
   link->tcp->data = link;
   connect->data = link;
 
-  uv_tcp_init (uvsocks->loop, link->tcp);
   uv_tcp_connect (connect,
                   link->tcp,
                   (const struct sockaddr *)resolved->ai_addr,
@@ -1035,26 +1037,20 @@ uvsocks_start_local_server (UvSocks       *uvsocks,
 {
   UvSocksNotify notify;
   struct sockaddr_in addr;
-  struct sockaddr_in name;
-  int namelen;
   int r;
 
-  notify = UVSOCKS_ERROR_TCP_LOCAL_SERVER;
   if (tunnel->param.listen_port < 0 || tunnel->param.listen_port > 65535)
     {
       notify = UVSOCKS_ERROR_TCP_PORT;
       goto fail;
     }
 
-  uv_ip4_addr (tunnel->param.listen_host, tunnel->param.listen_port, &addr);
-
   tunnel->listen_tcp = malloc (sizeof (*tunnel->listen_tcp));
   if (!tunnel->listen_tcp)
     goto fail;
-  tunnel->listen_tcp->data = tunnel;
 
+  uv_ip4_addr (tunnel->param.listen_host, tunnel->param.listen_port, &addr);
   uv_tcp_init (uvsocks->loop, tunnel->listen_tcp);
-
   r = uv_tcp_bind (tunnel->listen_tcp, (const struct sockaddr *) &addr, 0);
   if (r < 0)
     {
@@ -1062,9 +1058,16 @@ uvsocks_start_local_server (UvSocks       *uvsocks,
       goto fail;
     }
 
-  namelen = sizeof (name);
-  uv_tcp_getsockname (tunnel->listen_tcp, (struct sockaddr *) &name, &namelen);
-  tunnel->param.listen_port = ntohs (name.sin_port);
+  tunnel->listen_tcp->data = tunnel;
+
+  {
+    struct sockaddr_in name;
+    int namelen;
+
+    namelen = sizeof (name);
+    uv_tcp_getsockname (tunnel->server, (struct sockaddr *) &name, &namelen);
+    tunnel->param.listen_port = ntohs (name.sin_port);
+  }
 
   r = uv_listen ((uv_stream_t *) tunnel->listen_tcp, 16, uvsocks_local_new_connection);
   if (r < 0)
@@ -1077,7 +1080,7 @@ uvsocks_start_local_server (UvSocks       *uvsocks,
   if (uvsocks->callback_func)
     uvsocks->callback_func (uvsocks,
                             notify,
-                           &tunnel->param,
+                            &tunnel->param,
                             uvsocks->callback_data);
 
   return notify;
@@ -1086,7 +1089,7 @@ fail:
   if (uvsocks->callback_func)
     uvsocks->callback_func (uvsocks,
                             notify,
-                           &tunnel->param,
+                            &tunnel->param,
                             uvsocks->callback_data);
   if (tunnel->listen_tcp)
     free (tunnel->listen_tcp);
