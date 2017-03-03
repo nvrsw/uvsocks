@@ -84,8 +84,8 @@ typedef enum _UvSocksStage
 typedef struct _UvSocksTunnel UvSocksTunnel;
 typedef struct _UvSocksSession UvSocksSession;
 
-typedef struct _UvSocksSessionTcp UvSocksSessionTcp;
-struct _UvSocksSessionTcp
+typedef struct _UvSocksSessionLink UvSocksSessionLink;
+struct _UvSocksSessionLink
 {
   UvSocksSession       *session;
 
@@ -94,15 +94,15 @@ struct _UvSocksSessionTcp
   size_t                read;
   uv_alloc_cb           alloc_cb;
   uv_read_cb            read_cb;
-  UvSocksSessionTcp    *write;
+  UvSocksSessionLink   *write;
 };
 
 struct _UvSocksSession
 {
   UvSocksTunnel         *tunnel;
   UvSocksStage           stage;
-  UvSocksSessionTcp      socks;
-  UvSocksSessionTcp      local;
+  UvSocksSessionLink     socks;
+  UvSocksSessionLink     local;
 };
 
 struct _UvSocksTunnel
@@ -144,8 +144,8 @@ struct _UvSocksMessage
   void        (*destroy_data) (void *data);
 };
 
-typedef void (*UvSocksDnsResolveFunc) (UvSocksSessionTcp *session_tcp,
-                                       struct addrinfo   *resolved);
+typedef void (*UvSocksDnsResolveFunc) (UvSocksSessionLink *session_tcp,
+                                       struct addrinfo    *resolved);
 typedef struct _UvSocksDnsResolve UvSocksDnsResolve;
 struct _UvSocksDnsResolve
 {
@@ -156,13 +156,13 @@ struct _UvSocksDnsResolve
 typedef struct _UvSocksPacketReq UvSocksPacketReq;
 struct _UvSocksPacketReq
 {
-  UvSocksSessionTcp *restart_tcp;
-  uv_write_t         req;
-  uv_buf_t           buf;
+  UvSocksSessionLink *restart_tcp;
+  uv_write_t          req;
+  uv_buf_t            buf;
 };
 
 static void
-uvsocks_socks_login_req (UvSocksSessionTcp *session_tcp);
+uvsocks_socks_login_req (UvSocksSessionLink *session_tcp);
 
 static void
 uvsocks_receive_async (uv_async_t *handle)
@@ -314,7 +314,7 @@ uvsocks_alloc_buffer (uv_handle_t *handle,
                       size_t       suggested_size,
                       uv_buf_t    *buf)
 {
-  UvSocksSessionTcp *session_tcp = handle->data;
+  UvSocksSessionLink *session_tcp = handle->data;
   size_t size;
 
   size = UVSOCKS_BUF_MAX - session_tcp->read;
@@ -401,7 +401,7 @@ uvsocks_free (UvSocks *uvsocks)
 }
 
 static int
-uvsocks_start_read (UvSocksSessionTcp *socks_tcp)
+uvsocks_start_read (UvSocksSessionLink *socks_tcp)
 {
   return uv_read_start ((uv_stream_t *) socks_tcp->tcp,
                                         socks_tcp->alloc_cb,
@@ -409,9 +409,9 @@ uvsocks_start_read (UvSocksSessionTcp *socks_tcp)
 }
 
 static void
-uvsocks_notify (UvSocksSessionTcp *session_tcp,
-                UvSocksNotify      notify,
-                int                remove_session)
+uvsocks_notify (UvSocksSessionLink *session_tcp,
+                UvSocksNotify       notify,
+                int                 remove_session)
 {
   UvSocksSession *session = session_tcp->session;
   UvSocksTunnel *tunnel = session->tunnel;
@@ -432,7 +432,7 @@ uvsocks_dns_resolved (uv_getaddrinfo_t  *resolver,
                       struct addrinfo   *resolved)
 {
   UvSocksDnsResolve *d = resolver->data;
-  UvSocksSessionTcp *session_tcp = d->data;
+  UvSocksSessionLink *session_tcp = d->data;
 
   if (status < 0)
     {
@@ -456,7 +456,7 @@ uvsocks_dns_resolve (UvSocks              *uvsocks,
                      UvSocksDnsResolveFunc func,
                      void                 *data)
 {
-  UvSocksSessionTcp *session_tcp = data;
+  UvSocksSessionLink *session_tcp = data;
   UvSocksDnsResolve *d;
   uv_getaddrinfo_t *resolver;
   struct addrinfo hints;
@@ -501,7 +501,7 @@ static void
 uvsocks_connected (uv_connect_t *connect,
                    int           status)
 {
-  UvSocksSessionTcp *session_tcp = connect->data;
+  UvSocksSessionLink *session_tcp = connect->data;
   UvSocksSession *session = session_tcp->session;
 
   if (status < 0)
@@ -526,8 +526,8 @@ uvsocks_connected (uv_connect_t *connect,
 }
 
 static void
-uvsocks_connect_real (UvSocksSessionTcp *session_tcp,
-                      struct addrinfo   *resolved)
+uvsocks_connect_real (UvSocksSessionLink *session_tcp,
+                      struct addrinfo    *resolved)
 {
   UvSocksSession *session = session_tcp->session;
   UvSocks *uvsocks = session->tunnel->uvsocks;
@@ -565,9 +565,9 @@ uvsocks_connect (UvSocks              *uvsocks,
 }
 
 static int
-uvsocks_write_packet (UvSocksSessionTcp *session_tcp,
-                      char              *packet,
-                      size_t             size)
+uvsocks_write_packet (UvSocksSessionLink *session_tcp,
+                      char               *packet,
+                      size_t              size)
 {
   uv_buf_t buf;
 
@@ -595,10 +595,10 @@ uvsocks_free_packet_req (uv_write_t *req,
 }
 
 static void
-uvsocks_write_packet0 (UvSocksSessionTcp *session_tcp,
-                       UvSocksSessionTcp *restart_tcp,
-                       char              *packet,
-                       size_t             size)
+uvsocks_write_packet0 (UvSocksSessionLink *session_tcp,
+                       UvSocksSessionLink *restart_tcp,
+                       char               *packet,
+                       size_t              size)
 {
   UvSocksPacketReq *req;
 
@@ -615,7 +615,7 @@ uvsocks_write_packet0 (UvSocksSessionTcp *session_tcp,
 }
 
 static void
-uvsocks_socks_establish_req (UvSocksSessionTcp *session_tcp)
+uvsocks_socks_establish_req (UvSocksSessionLink *session_tcp)
 {
   UvSocksSession *session = session_tcp->session;
   UvSocksTunnel *tunnel = session->tunnel;
@@ -678,9 +678,9 @@ uvsocks_socks_establish_req (UvSocksSessionTcp *session_tcp)
 }
 
 static int
-uvsocks_socks_establish_ack (UvSocksSessionTcp *session_tcp,
-                             char              *buf,
-                             ssize_t            read)
+uvsocks_socks_establish_ack (UvSocksSessionLink *session_tcp,
+                             char               *buf,
+                             ssize_t             read)
 {
   UvSocksSession *session = session_tcp->session;
   UvSocksTunnel *tunnel = session->tunnel;
@@ -759,7 +759,7 @@ uvsocks_socks_establish_ack (UvSocksSessionTcp *session_tcp,
 }
 
 static void
-uvsocks_socks_auth_req (UvSocksSessionTcp *session_tcp)
+uvsocks_socks_auth_req (UvSocksSessionLink *session_tcp)
 {
   UvSocksSession *session = session_tcp->session;
   UvSocksTunnel *tunnel = session->tunnel;
@@ -797,9 +797,9 @@ uvsocks_socks_auth_req (UvSocksSessionTcp *session_tcp)
 }
 
 static int
-uvsocks_socks_auth_ack (UvSocksSessionTcp *session_tcp,
-                        char              *buf,
-                        ssize_t            read)
+uvsocks_socks_auth_ack (UvSocksSessionLink *session_tcp,
+                        char               *buf,
+                        ssize_t             read)
 {
   UvSocksSession *session = session_tcp->session;
 
@@ -824,7 +824,7 @@ uvsocks_socks_auth_ack (UvSocksSessionTcp *session_tcp,
 }
 
 static void
-uvsocks_socks_login_req (UvSocksSessionTcp *session_tcp)
+uvsocks_socks_login_req (UvSocksSessionLink *session_tcp)
 {
   UvSocksSession *session = session_tcp->session;
   char packet[20];
@@ -850,9 +850,9 @@ uvsocks_socks_login_req (UvSocksSessionTcp *session_tcp)
 }
 
 static int
-uvsocks_socks_login_ack (UvSocksSessionTcp *session_tcp,
-                         char              *buf,
-                         ssize_t            read)
+uvsocks_socks_login_ack (UvSocksSessionLink *session_tcp,
+                         char               *buf,
+                         ssize_t             read)
 {
   UvSocksSession *session = session_tcp->session;
 
@@ -880,7 +880,7 @@ uvsocks_read (uv_stream_t    *stream,
               ssize_t         nread,
               const uv_buf_t *buf)
 {
-  UvSocksSessionTcp *session_tcp = stream->data;
+  UvSocksSessionLink *session_tcp = stream->data;
   UvSocksSession *session = session_tcp->session;
 
   if (nread < 0)
