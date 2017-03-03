@@ -92,8 +92,6 @@ struct _UvSocksSessionLink
   uv_tcp_t             *tcp;
   char                 *buf;
   size_t                read;
-  uv_alloc_cb           alloc_cb;
-  uv_read_cb            read_cb;
   UvSocksSessionLink   *write_link;
 };
 
@@ -163,6 +161,11 @@ struct _UvSocksPacketReq
 
 static void
 uvsocks_socks_login_req (UvSocksSessionLink *link);
+
+static void
+uvsocks_read (uv_stream_t    *stream,
+              ssize_t         nread,
+              const uv_buf_t *buf);
 
 static void
 uvsocks_receive_async (uv_async_t *handle)
@@ -404,8 +407,8 @@ static int
 uvsocks_start_read (UvSocksSessionLink *link)
 {
   return uv_read_start ((uv_stream_t *) link->tcp,
-                                        link->alloc_cb,
-                                        link->read_cb);
+                                        uvsocks_alloc_buffer,
+                                        uvsocks_read);
 }
 
 static void
@@ -590,8 +593,8 @@ uvsocks_free_packet_req (uv_write_t *req,
     {
       wr->restart_link->read = 0;
       uv_read_start ((uv_stream_t *) wr->restart_link->tcp,
-                                     wr->restart_link->alloc_cb,
-                                     wr->restart_link->read_cb);
+                                     uvsocks_alloc_buffer,
+                                     uvsocks_read);
     }
   free (wr);
 }
@@ -950,15 +953,11 @@ uvsocks_create_session (UvSocksTunnel  *tunnel)
   session->local.buf = malloc (UVSOCKS_BUF_MAX);
   session->local.read = 0;
   session->local.session = session;
-  session->local.alloc_cb = uvsocks_alloc_buffer;
-  session->local.read_cb = uvsocks_read;
   session->local.write_link = &session->socks;
 
   session->socks.buf = malloc (UVSOCKS_BUF_MAX);
   session->socks.read = 0;
   session->socks.session = session;
-  session->socks.alloc_cb = uvsocks_alloc_buffer;
-  session->socks.read_cb = uvsocks_read;
   session->socks.write_link = &session->local;
 
   session->tunnel = tunnel;
