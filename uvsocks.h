@@ -6,8 +6,8 @@
 
 typedef struct _UvSocks UvSocks;
 
-typedef enum _UvSocksNotify UvSocksNotify;
-enum _UvSocksNotify
+typedef enum _UvSocksStatus UvSocksStatus;
+enum _UvSocksStatus
 {
   UVSOCKS_OK                            = 0,
   UVSOCKS_OK_TCP_LOCAL_SERVER           = 1,
@@ -46,8 +46,8 @@ struct _UvSocksParam
   int    listen_port;
 };
 
-typedef void (*UvSocksNotifyFunc) (UvSocks       *uvsocks,
-                                   UvSocksNotify  notify,
+typedef void (*UvSocksStatusFunc) (UvSocks       *uvsocks,
+                                   UvSocksStatus  status,
                                    UvSocksParam  *param,
                                    void          *data);
 
@@ -59,7 +59,7 @@ uvsocks_new (void              *uv_loop,
              const char        *password,
              int                n_params,
              UvSocksParam      *params,
-             UvSocksNotifyFunc  callback_func,
+             UvSocksStatusFunc  callback_func,
              void              *callback_data);
 
 int
@@ -68,7 +68,7 @@ uvsocks_run (UvSocks *uvsocks);
 void
 uvsocks_free (UvSocks *uvsocks);
 
-char *
-uvsocks_get_notify (UvSocksNotify notify);
+const char *
+uvsocks_get_status_string (UvSocksStatus status);
 
 #endif /* __UVSOCKS_H__ */

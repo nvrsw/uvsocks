@@ -136,7 +136,7 @@ struct _UvSocks
   int                    n_tunnels;
   UvSocksTunnel         *tunnels;
 
-  UvSocksNotifyFunc      callback_func;
+  UvSocksStatusFunc      callback_func;
   void                  *callback_data;
 };
 
@@ -232,7 +232,7 @@ uvsocks_new (void              *uv_loop,
              const char        *password,
              int                n_params,
              UvSocksParam      *params,
-             UvSocksNotifyFunc  callback_func,
+             UvSocksStatusFunc  callback_func,
              void              *callback_data)
 {
   UvSocks *uvsocks;
@@ -421,8 +421,8 @@ uvsocks_start_read (UvSocksSessionLink *link)
 }
 
 static void
-uvsocks_notify (UvSocksSessionLink *link,
-                UvSocksNotify       notify,
+uvsocks_status (UvSocksSessionLink *link,
+                UvSocksStatus       status,
                 int                 remove_session)
 {
   UvSocksSession *session = link->session;
@@ -431,7 +431,7 @@ uvsocks_notify (UvSocksSessionLink *link,
 
   if (uvsocks->callback_func)
     uvsocks->callback_func (uvsocks,
-                            notify,
+                            status,
                             &tunnel->param,
                             uvsocks->callback_data);
   if (remove_session)
@@ -448,7 +448,7 @@ uvsocks_dns_resolved (uv_getaddrinfo_t  *resolver,
 
   if (status < 0)
     {
-      uvsocks_notify (link, UVSOCKS_ERROR_DNS_RESOLVED, 1);
+      uvsocks_status (link, UVSOCKS_ERROR_DNS_RESOLVED, 1);
       goto done;
     }
 
@@ -504,7 +504,7 @@ uvsocks_dns_resolve (UvSocks              *uvsocks,
                            &hints);
   if (status)
   {
-    uvsocks_notify (link, UVSOCKS_ERROR_DNS_ADDRINFO, 1);
+    uvsocks_status (link, UVSOCKS_ERROR_DNS_ADDRINFO, 1);
     free (resolver);
   }
 }
@@ -518,11 +518,11 @@ uvsocks_connected (uv_connect_t *connect,
 
   if (status < 0)
     {
-      uvsocks_notify (link, UVSOCKS_ERROR_TCP_CONNECTED, 1);
+      uvsocks_status (link, UVSOCKS_ERROR_TCP_CONNECTED, 1);
       free (connect);
       return;
     }
-  uvsocks_notify (link, UVSOCKS_OK_TCP_CONNECTED, 0);
+  uvsocks_status (link, UVSOCKS_OK_TCP_CONNECTED, 0);
 
   if (link->read_tcp == session->socks.read_tcp)
     uvsocks_socks_login_req (link);
@@ -531,7 +531,7 @@ uvsocks_connected (uv_connect_t *connect,
 
   if (uvsocks_start_read (link))
     {
-      uvsocks_notify (link, UVSOCKS_ERROR_TCP_READ_START, 1);
+      uvsocks_status (link, UVSOCKS_ERROR_TCP_READ_START, 1);
       return;
     }
   free (connect);
@@ -722,7 +722,7 @@ uvsocks_socks_establish_ack (UvSocksSessionLink *link,
   if (session->socks.read_buf[0] != 0x05 ||
       session->socks.read_buf[1] != 0x00)
     {
-      uvsocks_notify (link, UVSOCKS_ERROR_SOCKS_COMMAND, 1);
+      uvsocks_status (link, UVSOCKS_ERROR_SOCKS_COMMAND, 1);
       return 1;
     }
 
@@ -736,7 +736,7 @@ uvsocks_socks_establish_ack (UvSocksSessionLink *link,
 
       strcpy (tunnel->param.listen_host, uvsocks->host);
       tunnel->param.listen_port = port;
-      uvsocks_notify (link, UVSOCKS_OK_SOCKS_BIND, 0);
+      uvsocks_status (link, UVSOCKS_OK_SOCKS_BIND, 0);
       uvsocks_session_set_stage (session, UVSOCKS_STAGE_BIND);
       return 0;
     }
@@ -752,11 +752,11 @@ uvsocks_socks_establish_ack (UvSocksSessionLink *link,
       return 0;
     }
 
-  uvsocks_notify (link, UVSOCKS_OK_SOCKS_CONNECT, 0);
+  uvsocks_status (link, UVSOCKS_OK_SOCKS_CONNECT, 0);
   uvsocks_session_set_stage (session, UVSOCKS_STAGE_TUNNEL);
   if (uvsocks_start_read (&session->local))
     {
-      uvsocks_notify (link, UVSOCKS_ERROR_TCP_READ_START, 1);
+      uvsocks_status (link, UVSOCKS_ERROR_TCP_READ_START, 1);
       return 1;
     }
 
@@ -821,7 +821,7 @@ uvsocks_socks_auth_ack (UvSocksSessionLink *link,
   if (session->socks.read_buf[0] != 0x01 ||
       session->socks.read_buf[1] != UVSOCKS_AUTH_ALLOW)
     {
-      uvsocks_notify (link, UVSOCKS_ERROR_SOCKS_AUTHENTICATION, 1);
+      uvsocks_status (link, UVSOCKS_ERROR_SOCKS_AUTHENTICATION, 1);
       return 1;
     }
   uvsocks_socks_establish_req (link);
@@ -873,7 +873,7 @@ uvsocks_socks_login_ack (UvSocksSessionLink *link,
   if (session->socks.read_buf[0] != 0x05 ||
       session->socks.read_buf[1] != UVSOCKS_AUTH_PASSWD)
     {
-      uvsocks_notify (link, UVSOCKS_ERROR_SOCKS_HANDSHAKE, 1);
+      uvsocks_status (link, UVSOCKS_ERROR_SOCKS_HANDSHAKE, 1);
       return 1;
     }
   uvsocks_socks_auth_req (link);
@@ -890,7 +890,7 @@ uvsocks_read (uv_stream_t    *stream,
 
   if (nread < 0)
     {
-      uvsocks_notify (link, UVSOCKS_ERROR_TCP_SOCKS_READ, 1);
+      uvsocks_status (link, UVSOCKS_ERROR_TCP_SOCKS_READ, 1);
       return;
     }
   if (nread == 0)
@@ -915,7 +915,7 @@ uvsocks_read (uv_stream_t    *stream,
 
               return;
             }
-          uvsocks_notify (link, UVSOCKS_ERROR_TCP_SOCKS_READ, 1);
+          uvsocks_status (link, UVSOCKS_ERROR_TCP_SOCKS_READ, 1);
         }
       link->read_buf_len -= ret;
       return;
@@ -979,18 +979,18 @@ uvsocks_local_new_connection (uv_stream_t *stream,
   UvSocksTunnel *tunnel = stream->data;
   UvSocks *uvsocks = tunnel->uvsocks;
   UvSocksSession *session;
-  UvSocksNotify notify;
+  UvSocksStatus socks_status;
 
   session = NULL;
   
-  notify = UVSOCKS_ERROR_TCP_NEW_CONNECT;
+  socks_status = UVSOCKS_ERROR_TCP_NEW_CONNECT;
   if (status == -1)
     goto fail;
 
   session = uvsocks_create_session (tunnel);
   if (!session)
     {
-      notify = UVSOCKS_ERROR_TCP_CREATE_SESSION;
+      socks_status = UVSOCKS_ERROR_TCP_CREATE_SESSION;
       goto fail;
     }
 
@@ -1002,14 +1002,14 @@ uvsocks_local_new_connection (uv_stream_t *stream,
   uv_tcp_init (uvsocks->loop, session->local.read_tcp);
   if (uv_accept (stream, (uv_stream_t *) session->local.read_tcp))
     {
-      notify = UVSOCKS_ERROR_TCP_ACCEPT;
+      socks_status = UVSOCKS_ERROR_TCP_ACCEPT;
       goto fail;
     }
 
-  notify = UVSOCKS_OK_TCP_NEW_CONNECT;
+  socks_status = UVSOCKS_OK_TCP_NEW_CONNECT;
   if (uvsocks->callback_func)
     uvsocks->callback_func (uvsocks,
-                            notify,
+                            socks_status,
                             &tunnel->param,
                             uvsocks->callback_data);
 
@@ -1023,7 +1023,7 @@ uvsocks_local_new_connection (uv_stream_t *stream,
 fail:
   if (uvsocks->callback_func)
     uvsocks->callback_func (uvsocks,
-                            notify,
+                            socks_status,
                            &tunnel->param,
                             uvsocks->callback_data);
   uvsocks_remove_session (tunnel, session);
@@ -1033,13 +1033,13 @@ static int
 uvsocks_start_local_server (UvSocks       *uvsocks,
                             UvSocksTunnel *tunnel)
 {
-  UvSocksNotify notify;
+  UvSocksStatus status;
   struct sockaddr_in addr;
   int r;
 
   if (tunnel->param.listen_port < 0 || tunnel->param.listen_port > 65535)
     {
-      notify = UVSOCKS_ERROR_TCP_PORT;
+      status = UVSOCKS_ERROR_TCP_PORT;
       goto fail;
     }
 
@@ -1052,7 +1052,7 @@ uvsocks_start_local_server (UvSocks       *uvsocks,
   r = uv_tcp_bind (tunnel->listen_tcp, (const struct sockaddr *) &addr, 0);
   if (r < 0)
     {
-      notify = UVSOCKS_ERROR_TCP_BIND;
+      status = UVSOCKS_ERROR_TCP_BIND;
       goto fail;
     }
 
@@ -1070,28 +1070,28 @@ uvsocks_start_local_server (UvSocks       *uvsocks,
   r = uv_listen ((uv_stream_t *) tunnel->listen_tcp, 16, uvsocks_local_new_connection);
   if (r < 0)
     {
-      notify = UVSOCKS_ERROR_TCP_LISTEN;
+      status = UVSOCKS_ERROR_TCP_LISTEN;
       goto fail;
     }
 
-  notify = UVSOCKS_OK_TCP_LOCAL_SERVER;
+  status = UVSOCKS_OK_TCP_LOCAL_SERVER;
   if (uvsocks->callback_func)
     uvsocks->callback_func (uvsocks,
-                            notify,
+                            status,
                             &tunnel->param,
                             uvsocks->callback_data);
 
-  return notify;
+  return status;
 
 fail:
   if (uvsocks->callback_func)
     uvsocks->callback_func (uvsocks,
-                            notify,
+                            status,
                             &tunnel->param,
                             uvsocks->callback_data);
   if (tunnel->listen_tcp)
     free (tunnel->listen_tcp);
-  return notify;
+  return status;
 }
 
 int
@@ -1125,10 +1125,10 @@ uvsocks_run (UvSocks *uvsocks)
   return UVSOCKS_OK;
 }
 
-char *
-uvsocks_get_notify (UvSocksNotify notify)
+const char *
+uvsocks_get_status_string (UvSocksStatus status)
 {
-  switch (notify)
+  switch (status)
     {
       case UVSOCKS_OK:
         return "normal success";

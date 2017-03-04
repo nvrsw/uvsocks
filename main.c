@@ -114,13 +114,13 @@ main_cleanup (void)
 
 static void
 main_uvsocks_notify (UvSocks       *uvsocks,
-                     UvSocksNotify  notify,
+                     UvSocksStatus  status,
                      UvSocksParam  *param,
                      void          *data)
 {
 	fprintf (stderr,
 				  "main[%s] %s:%d -> %s:%d\n",
-           uvsocks_get_notify (notify),
+           uvsocks_get_status_string (status),
            param->destination_host,
            param->destination_port,
            param->listen_host,
