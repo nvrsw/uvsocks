@@ -63,7 +63,7 @@ uvsocks_new (void              *uv_loop,
              UvSocksStatusFunc  callback_func,
              void              *callback_data);
 
-int
+void
 uvsocks_run (UvSocks *uvsocks);
 
 void

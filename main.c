@@ -367,8 +367,7 @@ main (int    argc,
   if (!main_uvsocks)
     goto fail;
 
-  if (uvsocks_run (main_uvsocks) != UVSOCKS_OK)
-    goto fail;
+  uvsocks_run (main_uvsocks);
 
   uv_run (main_loop, UV_RUN_DEFAULT);
 

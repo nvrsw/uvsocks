@@ -1137,16 +1137,13 @@ fail:
   return status;
 }
 
-int
+void
 uvsocks_run (UvSocks *uvsocks)
 {
   int i;
 
   if (!uvsocks)
-    return UVSOCKS_ERROR;
-
-  if (uvsocks->n_tunnels <= 0)
-    return UVSOCKS_ERROR;
+    return;
 
   for (i = 0; i < uvsocks->n_tunnels; i++)
     if (uvsocks->tunnels[i].param.is_forward)
@@ -1162,10 +1159,8 @@ uvsocks_run (UvSocks *uvsocks)
                          uvsocks->host,
                          uvsocks->port,
                          uvsocks_connect_real,
-                        &session->socks);
+                         &session->socks);
       }
-
-  return UVSOCKS_OK;
 }
 
 const char *
