@@ -243,16 +243,44 @@ uvsocks_new (void              *uv_loop,
   UvSocksTunnel *tunnels;
   int i;
 
+  if (port < 0 || port > 65535)
+    goto fail_parameter;
+
+  if (host == NULL || user == NULL || password == NULL)
+    goto fail_parameter;
+
+  if (n_params <= 0)
+    goto fail_parameter;
+
+  for (i = 0; i < n_params; i++)
+    {
+      if (params[i].destination_port < 0 ||
+          params[i].destination_port > 65535 ||
+          params[i].listen_port < 0 ||
+          params[i].listen_port > 65535)
+        goto fail_parameter;
+
+      if (params[i].destination_host == NULL ||
+          params[i].listen_host == NULL)
+        goto fail_parameter;
+    }
 
   uvsocks = calloc (sizeof (UvSocks), 1);
   if (!uvsocks)
     return NULL;
 
+  tunnels = calloc (sizeof (UvSocksTunnel), n_params);
+  if (!tunnels)
+    {
+      free (uvsocks);
+      return NULL;
+    }
+
   if (!uv_loop)
   {
     uvsocks->self_loop = 1;
     uvsocks->loop = malloc (sizeof (*uvsocks->loop));
-    uv_loop_init(uvsocks->loop);
+    uv_loop_init (uvsocks->loop);
   }
   else
     uvsocks->loop = uv_loop;
@@ -261,21 +289,17 @@ uvsocks_new (void              *uv_loop,
   uv_async_init (uvsocks->loop, &uvsocks->async, uvsocks_receive_async);
   uvsocks->async.data = uvsocks;
 
-  tunnels = calloc (sizeof (UvSocksTunnel), n_params);
-  if (!tunnels)
-    {
-      uvsocks_free (uvsocks);
-      return NULL;
-    }
   for (i = 0; i < n_params; i++)
     {
       tunnels[i].uvsocks = uvsocks;
       memcpy (&tunnels[i].param, &params[i], sizeof (UvSocksParam));
     }
+
   strlcpy (uvsocks->host, host, sizeof (uvsocks->host));
   uvsocks->port = port;
   strlcpy (uvsocks->user, user, sizeof (uvsocks->user));
   strlcpy (uvsocks->password, password, sizeof (uvsocks->password));
+
   uvsocks->n_tunnels = n_params;
   uvsocks->tunnels = tunnels;
   uvsocks->callback_func = callback_func;
@@ -283,7 +307,17 @@ uvsocks_new (void              *uv_loop,
 
   if (uvsocks->self_loop)
     uv_thread_create (&uvsocks->thread, uvsocks_thread_main, uvsocks);
+
   return uvsocks;
+
+fail_parameter:
+  if (callback_func)
+    callback_func (NULL,
+                   UVSOCKS_ERROR_PARAMETERS,
+                   NULL,
+                   callback_data);
+
+  return NULL;
 }
 
 static void
