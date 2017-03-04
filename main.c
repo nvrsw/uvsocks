@@ -369,9 +369,13 @@ main (int    argc,
 
   if (uvsocks_run (main_uvsocks) != UVSOCKS_OK)
     goto fail;
+
   uv_run (main_loop, UV_RUN_DEFAULT);
+
 fail:
+
   main_exit ();
   uv_loop_close (main_loop);
+
   return EXIT_SUCCESS;
 }

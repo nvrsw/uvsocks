@@ -1180,7 +1180,7 @@ uvsocks_get_status_string (UvSocksStatus status)
       case UVSOCKS_OK_TCP_NEW_CONNECT:
         return "tcp success: new connect";
       case UVSOCKS_OK_TCP_CONNECTED:
-        return "socks success: connected";
+        return "tcp success: connected";
       case UVSOCKS_OK_SOCKS_CONNECT:
         return "socks success: connect";
       case UVSOCKS_OK_SOCKS_BIND:
