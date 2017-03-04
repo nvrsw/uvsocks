@@ -1072,19 +1072,13 @@ fail:
   uvsocks_remove_session (tunnel, session);
 }
 
-static int
+static void
 uvsocks_start_local_server (UvSocks       *uvsocks,
                             UvSocksTunnel *tunnel)
 {
   UvSocksStatus status;
   struct sockaddr_in addr;
   int r;
-
-  if (tunnel->param.listen_port < 0 || tunnel->param.listen_port > 65535)
-    {
-      status = UVSOCKS_ERROR_TCP_PORT;
-      goto fail;
-    }
 
   tunnel->listen_tcp = malloc (sizeof (*tunnel->listen_tcp));
   if (!tunnel->listen_tcp)
@@ -1124,17 +1118,20 @@ uvsocks_start_local_server (UvSocks       *uvsocks,
                             &tunnel->param,
                             uvsocks->callback_data);
 
-  return status;
+  return;
 
 fail:
+
   if (uvsocks->callback_func)
     uvsocks->callback_func (uvsocks,
                             status,
                             &tunnel->param,
                             uvsocks->callback_data);
+
   if (tunnel->listen_tcp)
     free (tunnel->listen_tcp);
-  return status;
+
+  return;
 }
 
 void
