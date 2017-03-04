@@ -13,6 +13,10 @@
 #define strdup(x) _strdup(x)
 #endif
 
+#ifdef _WIN32
+#define strlcpy(x, y, z) strncpy_s((x), (z), (y), _TRUNCATE)
+#endif
+
 #include "uvsocks.h"
 #include "aqueue.h"
 #include <uv.h>
@@ -268,10 +272,10 @@ uvsocks_new (void              *uv_loop,
       tunnels[i].uvsocks = uvsocks;
       memcpy (&tunnels[i].param, &params[i], sizeof (UvSocksParam));
     }
-  strcpy (uvsocks->host, host);
+  strlcpy (uvsocks->host, host, sizeof (uvsocks->host));
   uvsocks->port = port;
-  strcpy (uvsocks->user, user);
-  strcpy (uvsocks->password, password);
+  strlcpy (uvsocks->user, user, sizeof (uvsocks->user));
+  strlcpy (uvsocks->password, password, sizeof (uvsocks->password));
   uvsocks->n_tunnels = n_params;
   uvsocks->tunnels = tunnels;
   uvsocks->callback_func = callback_func;
@@ -734,7 +738,7 @@ uvsocks_socks_establish_ack (UvSocksSessionLink *link,
       memcpy (&port, &session->socks.read_buf[8], 2);
       port = htons(port);
 
-      strcpy (tunnel->param.listen_host, uvsocks->host);
+      strlcpy (tunnel->param.listen_host, uvsocks->host, sizeof (tunnel->param.listen_host));
       tunnel->param.listen_port = port;
       uvsocks_status (link, UVSOCKS_OK_SOCKS_BIND, 0);
       uvsocks_session_set_stage (session, UVSOCKS_STAGE_BIND);
