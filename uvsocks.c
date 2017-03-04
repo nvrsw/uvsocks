@@ -386,19 +386,14 @@ uvsocks_remove_session (UvSocksTunnel  *tunnel,
 
   uvsocks_set_empty_session (tunnel, session);
   if (session->socks.read_tcp)
-    {
-      uv_read_stop ((uv_stream_t *)session->socks.read_tcp);
-      uv_close ((uv_handle_t *) session->socks.read_tcp, uvsocks_free_handle);
-    }
+    uv_close ((uv_handle_t *) session->socks.read_tcp, uvsocks_free_handle);
 
   if (session->local.read_tcp)
-    {
-      uv_read_stop ((uv_stream_t *) session->local.read_tcp);
-      uv_close ((uv_handle_t *) session->local.read_tcp, uvsocks_free_handle);
-    }
+    uv_close ((uv_handle_t *) session->local.read_tcp, uvsocks_free_handle);
 
   if (session->socks.read_buf)
     free (session->socks.read_buf);
+
   if (session->local.read_buf)
     free (session->local.read_buf);
  
