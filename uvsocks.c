@@ -1024,11 +1024,11 @@ uvsocks_local_new_connection (uv_stream_t *stream,
   UvSocksSession *session;
   UvSocksStatus socks_status;
 
-  session = NULL;
-  
-  socks_status = UVSOCKS_ERROR_TCP_NEW_CONNECT;
   if (status == -1)
-    goto fail;
+    {
+      socks_status = UVSOCKS_ERROR_TCP_NEW_CONNECT;
+      goto fail;
+    }
 
   session = uvsocks_create_session (tunnel);
   if (!session)
@@ -1040,6 +1040,7 @@ uvsocks_local_new_connection (uv_stream_t *stream,
   session->local.read_tcp = malloc (sizeof (*session->local.read_tcp));
   if (!session->local.read_tcp)
     goto fail;
+
   session->local.read_tcp->data = &session->local;
 
   uv_tcp_init (uvsocks->loop, session->local.read_tcp);
@@ -1049,10 +1050,9 @@ uvsocks_local_new_connection (uv_stream_t *stream,
       goto fail;
     }
 
-  socks_status = UVSOCKS_OK_TCP_NEW_CONNECT;
   if (uvsocks->callback_func)
     uvsocks->callback_func (uvsocks,
-                            socks_status,
+                            UVSOCKS_OK_TCP_NEW_CONNECT,
                             &tunnel->param,
                             uvsocks->callback_data);
 
@@ -1064,11 +1064,13 @@ uvsocks_local_new_connection (uv_stream_t *stream,
   return;
  
 fail:
+
   if (uvsocks->callback_func)
     uvsocks->callback_func (uvsocks,
                             socks_status,
-                           &tunnel->param,
+                            &tunnel->param,
                             uvsocks->callback_data);
+
   uvsocks_remove_session (tunnel, session);
 }
 
