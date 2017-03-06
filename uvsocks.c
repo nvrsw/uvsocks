@@ -31,10 +31,6 @@
 #include <unistd.h>
 #endif
 
-#ifdef CONFIG_NEED_OFFSETOF
-#define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *) 0)->MEMBER)
-#endif
-
 #ifdef _WIN32
 #define container_of(ptr, type, member) (type *)((char *)ptr - offsetof (type, member))
 #endif
