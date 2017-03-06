@@ -39,7 +39,7 @@
 #define container_of(ptr, type, member) (type *)((char *)ptr - offsetof (type, member))
 #endif
 
-#define UVSOCKS_BUF_MAX (1024 * 1024)
+#define UVSOCKS_BUF_MAX (1024 * 512)
 
 #ifndef UV_BUF_LEN
 #ifdef _WIN32
@@ -113,7 +113,7 @@ struct _UvSocksSessionLink
   UvSocksSession       *session;
 
   uv_tcp_t             *read_tcp;
-  char                 *read_buf;
+  char                  read_buf[UVSOCKS_BUF_MAX];
   size_t                read_buf_len;
   UvSocksSessionLink   *write_link;
   uv_write_t            write_req;
@@ -374,6 +374,23 @@ uvsocks_alloc_buffer (uv_handle_t *handle,
 }
 
 static void
+uvsocks_free_read_tcp (uv_handle_t *handle)
+{
+  UvSocksSessionLink *link = handle->data;
+  UvSocksSession *session = link->session;
+
+  free (handle);
+
+  if (!session->socks.read_tcp && !session->local.read_tcp)
+    {
+      UvSocksTunnel *tunnel = session->tunnel;
+
+      tunnel->n_sessions--;
+      free (session);
+    }
+}
+
+static void
 uvsocks_free_handle (uv_handle_t *handle)
 {
   free (handle);
@@ -388,19 +405,10 @@ uvsocks_remove_session (UvSocksTunnel  *tunnel,
 
   uvsocks_set_empty_session (tunnel, session);
   if (session->socks.read_tcp)
-    uv_close ((uv_handle_t *) session->socks.read_tcp, uvsocks_free_handle);
+    uv_close ((uv_handle_t *) session->socks.read_tcp, uvsocks_free_read_tcp);
 
   if (session->local.read_tcp)
-    uv_close ((uv_handle_t *) session->local.read_tcp, uvsocks_free_handle);
-
-  if (session->socks.read_buf)
-    free (session->socks.read_buf);
-
-  if (session->local.read_buf)
-    free (session->local.read_buf);
- 
-  free (session);
-  tunnel->n_sessions--;
+    uv_close ((uv_handle_t *) session->local.read_tcp, uvsocks_free_read_tcp);
 }
 
 static void
@@ -956,12 +964,10 @@ uvsocks_create_session (UvSocksTunnel  *tunnel)
   if (!session)
     return NULL;
 
-  session->local.read_buf = malloc (UVSOCKS_BUF_MAX);
   session->local.read_buf_len = 0;
   session->local.session = session;
   session->local.write_link = &session->socks;
 
-  session->socks.read_buf = malloc (UVSOCKS_BUF_MAX);
   session->socks.read_buf_len = 0;
   session->socks.session = session;
   session->socks.write_link = &session->local;
@@ -1026,7 +1032,7 @@ uvsocks_local_new_connection (uv_stream_t *stream,
                                 uvsocks->callback_data);
 
       if (session->local.read_tcp)
-        uv_close ((uv_handle_t *) session->local.read_tcp, uvsocks_free_handle);
+        uv_close ((uv_handle_t *) session->local.read_tcp, uvsocks_free_read_tcp);
       return;
     }
 
