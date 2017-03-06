@@ -665,7 +665,7 @@ uvsocks_read_start_after_free_packet (uv_write_t *req,
 {
   UvSocksSessionLink *link = container_of(req, UvSocksSessionLink, write_req);
 
-  link->write_link->read_buf_len = 0;
+  link->read_buf_len = 0;
   uv_read_start ((uv_stream_t *) link->read_tcp,
                                  uvsocks_alloc_buffer,
                                  uvsocks_read);
