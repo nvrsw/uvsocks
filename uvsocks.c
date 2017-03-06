@@ -446,8 +446,12 @@ uvsocks_free (UvSocks *uvsocks)
 
   uvsocks_free_tunnel (uvsocks);
   uvsocks_send_async (uvsocks, uvsocks_quit, NULL, NULL);
-  uv_thread_join (&uvsocks->thread);
+
+  if (uvsocks->self_loop)
+    uv_thread_join (&uvsocks->thread);
+
   uv_close ((uv_handle_t *) &uvsocks->async, NULL);
+
   if (uvsocks->self_loop)
     {
       uv_loop_close (uvsocks->loop);
