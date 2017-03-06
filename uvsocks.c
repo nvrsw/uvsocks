@@ -433,26 +433,11 @@ uvsocks_free_tunnel (UvSocks *uvsocks)
 }
 
 static void
-uvsocks_free_async (uv_handle_t *handle)
-{
-  UvSocks *uvsocks = handle->data;
-
-    if (uvsocks->self_loop)
-    {
-      uv_stop (uvsocks->loop);
-      uv_thread_join (&uvsocks->thread);
-      uv_loop_close (uvsocks->loop);
-      free (uvsocks->loop);
-    }
-
-  free (uvsocks);
-}
-
-static void
 uvsocks_quit (UvSocks  *uvsocks,
               void     *data)
 {
-  uv_close ((uv_handle_t *) &uvsocks->async, uvsocks_free_async);
+  if (uvsocks->self_loop)
+    uv_stop (uvsocks->loop);
 }
 
 void
@@ -463,6 +448,15 @@ uvsocks_free (UvSocks *uvsocks)
 
   uvsocks_free_tunnel (uvsocks);
   uvsocks_send_async (uvsocks, uvsocks_quit, NULL, NULL);
+  uv_thread_join (&uvsocks->thread);
+  uv_close ((uv_handle_t *) &uvsocks->async, NULL);
+  if (uvsocks->self_loop)
+  {
+    uv_loop_close (uvsocks->loop);
+    free (uvsocks->loop);
+  }
+
+  free (uvsocks);
 }
 
 static void
