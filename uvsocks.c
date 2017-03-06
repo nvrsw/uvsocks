@@ -537,7 +537,7 @@ uvsocks_dns_resolve (UvSocks              *uvsocks,
 }
 
 static void
-uvsocks_set_stage_after_free_packet (uv_write_t *req,
+uvsocks_free_packet_after_set_stage (uv_write_t *req,
                                      int         status)
 {
   UvSocksPacketReq *wr = (UvSocksPacketReq *) req;
@@ -595,7 +595,7 @@ uvsocks_connected (uv_connect_t *connect,
                 (uv_stream_t *) session->socks.read_tcp,
                 &wr->buf,
                 1,
-                uvsocks_set_stage_after_free_packet);
+                uvsocks_free_packet_after_set_stage);
     }
   else
     uvsocks_session_set_stage (session, UVSOCKS_STAGE_TUNNEL);
@@ -757,7 +757,7 @@ uvsocks_read (uv_stream_t    *stream,
                         (uv_stream_t *) session->socks.read_tcp,
                         &wr->buf,
                         1,
-                        uvsocks_set_stage_after_free_packet);
+                        uvsocks_free_packet_after_set_stage);
             }
           }
           break;
@@ -820,7 +820,7 @@ uvsocks_read (uv_stream_t    *stream,
                           (uv_stream_t *) session->socks.read_tcp,
                           &wr->buf,
                           1,
-                          uvsocks_set_stage_after_free_packet);
+                          uvsocks_free_packet_after_set_stage);
             }
           }
           break;
