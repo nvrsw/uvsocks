@@ -423,10 +423,12 @@ uvsocks_free_tunnel (UvSocks *uvsocks)
   for (t = 0; t < uvsocks->n_tunnels; t++)
     {
       for (s = 0; s < uvsocks->tunnels[t].n_sessions; s++)
-        uvsocks_remove_session(&uvsocks->tunnels[t], uvsocks->tunnels[t].sessions[s]);
+        uvsocks_remove_session (&uvsocks->tunnels[t],
+                                uvsocks->tunnels[t].sessions[s]);
 
       if (uvsocks->tunnels[t].listen_tcp)
-        uv_close ((uv_handle_t *) uvsocks->tunnels[t].listen_tcp, uvsocks_free_handle);
+        uv_close ((uv_handle_t *) uvsocks->tunnels[t].listen_tcp,
+                  uvsocks_free_handle);
     }
 
   free (uvsocks->tunnels);
@@ -451,10 +453,10 @@ uvsocks_free (UvSocks *uvsocks)
   uv_thread_join (&uvsocks->thread);
   uv_close ((uv_handle_t *) &uvsocks->async, NULL);
   if (uvsocks->self_loop)
-  {
-    uv_loop_close (uvsocks->loop);
-    free (uvsocks->loop);
-  }
+    {
+      uv_loop_close (uvsocks->loop);
+      free (uvsocks->loop);
+    }
 
   free (uvsocks);
 }
@@ -665,7 +667,7 @@ static void
 uvsocks_read_start_after_free_packet (uv_write_t *req,
                                       int         status)
 {
-  UvSocksSessionLink *link = container_of(req, UvSocksSessionLink, write_req);
+  UvSocksSessionLink *link = container_of (req, UvSocksSessionLink, write_req);
 
   link->read_buf_len = 0;
   uv_read_start ((uv_stream_t *) link->read_tcp,
