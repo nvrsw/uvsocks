@@ -418,13 +418,13 @@ uvsocks_free_tunnel (UvSocks *uvsocks)
 
   for (t = 0; t < uvsocks->n_tunnels; t++)
     {
-      for (s = 0; s < uvsocks->tunnels[t].n_sessions; s++)
-        uvsocks_remove_session (&uvsocks->tunnels[t],
-                                uvsocks->tunnels[t].sessions[s]);
-
       if (uvsocks->tunnels[t].listen_tcp)
         uv_close ((uv_handle_t *) uvsocks->tunnels[t].listen_tcp,
                   uvsocks_free_handle);
+
+      for (s = 0; s < uvsocks->tunnels[t].n_sessions; s++)
+        uvsocks_remove_session (&uvsocks->tunnels[t],
+                                uvsocks->tunnels[t].sessions[s]);
     }
 
   free (uvsocks->tunnels);
