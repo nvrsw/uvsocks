@@ -370,7 +370,7 @@ uvsocks_alloc_buffer (uv_handle_t *handle,
 }
 
 static void
-uvsocks_free_read_tcp (uv_handle_t *handle)
+uvsocks_free_handle_with_session (uv_handle_t *handle)
 {
   UvSocksSessionLink *link = handle->data;
   UvSocksSession *session = link->session;
@@ -401,10 +401,10 @@ uvsocks_remove_session (UvSocksTunnel  *tunnel,
 
   uvsocks_set_empty_session (tunnel, session);
   if (session->socks.read_tcp)
-    uv_close ((uv_handle_t *) session->socks.read_tcp, uvsocks_free_read_tcp);
+    uv_close ((uv_handle_t *) session->socks.read_tcp, uvsocks_free_handle_with_session);
 
   if (session->local.read_tcp)
-    uv_close ((uv_handle_t *) session->local.read_tcp, uvsocks_free_read_tcp);
+    uv_close ((uv_handle_t *) session->local.read_tcp, uvsocks_free_handle_with_session);
 }
 
 static void
@@ -1028,7 +1028,7 @@ uvsocks_local_new_connection (uv_stream_t *stream,
                                 uvsocks->callback_data);
 
       if (session->local.read_tcp)
-        uv_close ((uv_handle_t *) session->local.read_tcp, uvsocks_free_read_tcp);
+        uv_close ((uv_handle_t *) session->local.read_tcp, uvsocks_free_handle_with_session);
       return;
     }
 
