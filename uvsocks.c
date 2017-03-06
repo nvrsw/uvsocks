@@ -624,6 +624,9 @@ uvsocks_connect_real (UvSocksSessionLink *link,
   UvSocks *uvsocks = session->tunnel->uvsocks;
   uv_connect_t *connect;
 
+  if (!link->read_tcp)
+    return;
+
   connect = malloc (sizeof (*connect));
   if (!connect)
     {
