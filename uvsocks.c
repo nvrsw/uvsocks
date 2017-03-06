@@ -659,50 +659,16 @@ uvsocks_connect_real (UvSocksSessionLink *link,
                   uvsocks_connected);
 }
 
-static int
-uvsocks_write_packet (UvSocksSessionLink *link,
-                      char               *packet,
-                      size_t              size)
-{
-  uv_buf_t buf;
-
-  buf = uv_buf_init (packet, (uint32_t) size);
-  return uv_try_write ((uv_stream_t*)link->read_tcp, &buf, 1);
-}
-
 static void
-uvsocks_free_packet_req (uv_write_t *req,
-                         int         status)
+uvsocks_read_start_after_free_packet (uv_write_t *req,
+                                      int         status)
 {
   UvSocksSessionLink *link = container_of(req, UvSocksSessionLink, write_req);
 
-  if (link->write_link)
-    {
-      link->write_link->read_buf_len = 0;
-      uv_read_start ((uv_stream_t *) link->read_tcp,
-                                     uvsocks_alloc_buffer,
-                                     uvsocks_read);
-    }
-}
-
-static void
-uvsocks_write_packet0 (UvSocksSessionLink *link,
-                       char               *packet,
-                       size_t              len)
-{
-  uv_buf_t bufs[1];
-
-  if (link->write_link)
-    uv_read_stop ((uv_stream_t *) link->read_tcp);
-
-  bufs[0].base = packet;
-  bufs[0].len = UV_BUF_LEN (len);
-
-  uv_write (&link->write_req,
-            (uv_stream_t *) link->write_link->read_tcp,
-            bufs,
-            1,
-            uvsocks_free_packet_req);
+  link->write_link->read_buf_len = 0;
+  uv_read_start ((uv_stream_t *) link->read_tcp,
+                                 uvsocks_alloc_buffer,
+                                 uvsocks_read);
 }
 
 static void
@@ -714,6 +680,8 @@ uvsocks_read (uv_stream_t    *stream,
   UvSocksSession *session = link->session;
   UvSocksTunnel *tunnel = session->tunnel;
   UvSocks *uvsocks = tunnel->uvsocks;
+  char *data;
+  size_t consume;
 
   if (nread < 0)
     {
@@ -728,219 +696,248 @@ uvsocks_read (uv_stream_t    *stream,
   if (nread == 0)
     return;
 
-   switch (session->stage)
-     {
-      case UVSOCKS_STAGE_NONE:
-        break;
-      case UVSOCKS_STAGE_HANDSHAKE:
+  link->read_buf_len += nread;
+  data = link->read_buf;
+  do
+    {
+      consume = 0;
+      switch (session->stage)
         {
-          if (session->socks.read_buf[0] != 0x05 ||
-              session->socks.read_buf[1] != UVSOCKS_AUTH_PASSWD)
-            {
-              UvSocksTunnel *tunnel = session->tunnel;
-              UvSocks *uvsocks = tunnel->uvsocks;
-
-              if (uvsocks->callback_func)
-                uvsocks->callback_func (uvsocks,
-                                        UVSOCKS_ERROR_SOCKS_HANDSHAKE,
-                                        &tunnel->param,
-                                        uvsocks->callback_data);
-              uvsocks_remove_session (tunnel, session);
-              break;
-            }
+        case UVSOCKS_STAGE_NONE:
+          break;
+        case UVSOCKS_STAGE_HANDSHAKE:
           {
-            UvSocksPacketReq *wr;
-            char buf[100];
-            size_t buf_size;
-            size_t length;
-
-            buf_size = 0;
-            buf[buf_size++] = 0x01;
-            length = strlen (uvsocks->user);
-            buf[buf_size++] = (char) length;
-            memcpy (&buf[buf_size], uvsocks->user, length);
-            buf_size += length;
-
-            length = strlen (uvsocks->password);
-            buf[buf_size++] = (char) length;
-            memcpy (&buf[buf_size], uvsocks->password, length);
-            buf_size += length;
-
-            wr = (UvSocksPacketReq *) malloc (sizeof *wr);
-            wr->req.data = session;
-            wr->buf = uv_buf_init (buf, (unsigned int) buf_size);
-            wr->stage = UVSOCKS_STAGE_AUTHENTICATE;
-
-            uv_write ((uv_write_t *) wr,
-                      (uv_stream_t *) session->socks.read_tcp,
-                      &wr->buf,
-                      1,
-                      uvsocks_set_stage_after_free_packet);
-          }
-        }
-        break;
-      case UVSOCKS_STAGE_AUTHENTICATE:
-        {
-          if (session->socks.read_buf[0] != 0x01 ||
-              session->socks.read_buf[1] != UVSOCKS_AUTH_ALLOW)
-            {
-              if (uvsocks->callback_func)
-                uvsocks->callback_func (uvsocks,
-                                        UVSOCKS_ERROR_SOCKS_AUTHENTICATION,
-                                        &tunnel->param,
-                                        uvsocks->callback_data);
-              uvsocks_remove_session (tunnel, session);
+            if (link->read_buf_len < 2)
               break;
-            }
-          {
-            UvSocksPacketReq *wr;
-            char buf[100];
-            size_t buf_size;
-            unsigned short port;
-            struct sockaddr_in addr;
+
+            if (session->socks.read_buf[0] != 0x05 ||
+                session->socks.read_buf[1] != UVSOCKS_AUTH_PASSWD)
+              {
+                UvSocksTunnel *tunnel = session->tunnel;
+                UvSocks *uvsocks = tunnel->uvsocks;
+
+                if (uvsocks->callback_func)
+                  uvsocks->callback_func (uvsocks,
+                                          UVSOCKS_ERROR_SOCKS_HANDSHAKE,
+                                          &tunnel->param,
+                                          uvsocks->callback_data);
+                uvsocks_remove_session (tunnel, session);
+                return;
+              }
+            consume = 2;
+
+            {
+              UvSocksPacketReq *wr;
+              char buf[100];
+              size_t buf_size;
+              size_t length;
 
               buf_size = 0;
-              buf[buf_size++] = 0x05;
-              buf[buf_size++] = tunnel->param.is_forward ? UVSOCKS_CMD_CONNECT :
-                                                                 UVSOCKS_CMD_BIND;
-              buf[buf_size++] = 0x00;
-              buf[buf_size++] = UVSOCKS_ADDR_TYPE_IPV4;
-              if (tunnel->param.is_forward)
-                {
-                  uv_ip4_addr (tunnel->param.destination_host,
-                               tunnel->param.destination_port,
-                              &addr);
-                  port = htons (tunnel->param.destination_port);
-                }
-              else
-                {
-                  uv_ip4_addr (tunnel->param.listen_host,
-                               tunnel->param.listen_port,
-                              &addr);
-                  port = htons (tunnel->param.listen_port);
-                }
-              memcpy (&buf[buf_size], &addr.sin_addr.s_addr, 4);
-              buf_size += 4;
-              memcpy (&buf[buf_size], &port, 2);
-              buf_size += 2;
+              buf[buf_size++] = 0x01;
+              length = strlen (uvsocks->user);
+              buf[buf_size++] = (char) length;
+              memcpy (&buf[buf_size], uvsocks->user, length);
+              buf_size += length;
+
+              length = strlen (uvsocks->password);
+              buf[buf_size++] = (char) length;
+              memcpy (&buf[buf_size], uvsocks->password, length);
+              buf_size += length;
 
               wr = (UvSocksPacketReq *) malloc (sizeof *wr);
               wr->req.data = session;
               wr->buf = uv_buf_init (buf, (unsigned int) buf_size);
-              wr->stage = UVSOCKS_STAGE_ESTABLISH;
+              wr->stage = UVSOCKS_STAGE_AUTHENTICATE;
 
               uv_write ((uv_write_t *) wr,
                         (uv_stream_t *) session->socks.read_tcp,
                         &wr->buf,
                         1,
                         uvsocks_set_stage_after_free_packet);
+            }
           }
+          break;
+        case UVSOCKS_STAGE_AUTHENTICATE:
+          {
+            if (link->read_buf_len < 2)
+              break;
+
+            if (session->socks.read_buf[0] != 0x01 ||
+                session->socks.read_buf[1] != UVSOCKS_AUTH_ALLOW)
+              {
+                if (uvsocks->callback_func)
+                  uvsocks->callback_func (uvsocks,
+                                          UVSOCKS_ERROR_SOCKS_AUTHENTICATION,
+                                          &tunnel->param,
+                                          uvsocks->callback_data);
+                uvsocks_remove_session (tunnel, session);
+                return;
+              }
+            consume = 2;
+
+            {
+              UvSocksPacketReq *wr;
+              char buf[100];
+              size_t buf_size;
+              unsigned short port;
+              struct sockaddr_in addr;
+
+                buf_size = 0;
+                buf[buf_size++] = 0x05;
+                buf[buf_size++] = tunnel->param.is_forward ? UVSOCKS_CMD_CONNECT :
+                                                             UVSOCKS_CMD_BIND;
+                buf[buf_size++] = 0x00;
+                buf[buf_size++] = UVSOCKS_ADDR_TYPE_IPV4;
+                if (tunnel->param.is_forward)
+                  {
+                    uv_ip4_addr (tunnel->param.destination_host,
+                                  tunnel->param.destination_port,
+                                &addr);
+                    port = htons (tunnel->param.destination_port);
+                  }
+                else
+                  {
+                    uv_ip4_addr (tunnel->param.listen_host,
+                                  tunnel->param.listen_port,
+                                &addr);
+                    port = htons (tunnel->param.listen_port);
+                  }
+                memcpy (&buf[buf_size], &addr.sin_addr.s_addr, 4);
+                buf_size += 4;
+                memcpy (&buf[buf_size], &port, 2);
+                buf_size += 2;
+
+                wr = (UvSocksPacketReq *) malloc (sizeof *wr);
+                wr->req.data = session;
+                wr->buf = uv_buf_init (buf, (unsigned int) buf_size);
+                wr->stage = UVSOCKS_STAGE_ESTABLISH;
+
+                uv_write ((uv_write_t *) wr,
+                          (uv_stream_t *) session->socks.read_tcp,
+                          &wr->buf,
+                          1,
+                          uvsocks_set_stage_after_free_packet);
+            }
+          }
+          break;
+        case UVSOCKS_STAGE_ESTABLISH:
+        case UVSOCKS_STAGE_BIND:
+          {
+            if (link->read_buf_len < 10)
+              break;
+
+            if (session->socks.read_buf[0] != 0x05 ||
+                session->socks.read_buf[1] != 0x00)
+              {
+                if (uvsocks->callback_func)
+                  uvsocks->callback_func (uvsocks,
+                                          UVSOCKS_ERROR_SOCKS_COMMAND,
+                                          &tunnel->param,
+                                          uvsocks->callback_data);
+                uvsocks_remove_session (tunnel, session);
+                return;
+              }
+
+            consume = 10;
+
+            if (session->stage == UVSOCKS_STAGE_ESTABLISH &&
+                tunnel->param.is_forward == 0)
+              {
+                int port;
+
+                memcpy (&port, &session->socks.read_buf[8], 2);
+                port = htons(port);
+
+                strlcpy (tunnel->param.listen_host, uvsocks->host, sizeof (tunnel->param.listen_host));
+                tunnel->param.listen_port = port;
+
+                if (uvsocks->callback_func)
+                  uvsocks->callback_func (uvsocks,
+                                          UVSOCKS_OK_SOCKS_BIND,
+                                          &tunnel->param,
+                                          uvsocks->callback_data);
+
+                uvsocks_session_set_stage (session, UVSOCKS_STAGE_BIND);
+                break;
+              }
+
+            if (session->stage == UVSOCKS_STAGE_BIND &&
+                tunnel->param.is_forward == 0)
+              {
+                uvsocks_dns_resolve (uvsocks,
+                                      tunnel->param.destination_host,
+                                      tunnel->param.destination_port,
+                                      uvsocks_connect_real,
+                                      &session->local);
+                break;
+              }
+
+            if (uvsocks->callback_func)
+              uvsocks->callback_func (uvsocks,
+                                      UVSOCKS_OK_SOCKS_CONNECT,
+                                      &tunnel->param,
+                                      uvsocks->callback_data);
+
+            uvsocks_session_set_stage (session, UVSOCKS_STAGE_TUNNEL);
+            if (uv_read_start ((uv_stream_t *) session->local.read_tcp,
+                                uvsocks_alloc_buffer,
+                                uvsocks_read))
+              {
+                if (uvsocks->callback_func)
+                  uvsocks->callback_func (uvsocks,
+                                          UVSOCKS_ERROR_TCP_READ_START,
+                                          &tunnel->param,
+                                          uvsocks->callback_data);
+                uvsocks_remove_session (tunnel, session);
+                return;
+              }
+          }
+          break;
+        case UVSOCKS_STAGE_TUNNEL:
+          {
+            int ret;
+            uv_buf_t buf;
+
+            buf = uv_buf_init (link->read_buf, (uint32_t) link->read_buf_len);
+            ret = uv_try_write ((uv_stream_t*)link->write_link->read_tcp, &buf, 1);
+            if (ret < 0)
+              {
+                UvSocksTunnel *tunnel = session->tunnel;
+                UvSocks *uvsocks = tunnel->uvsocks;
+
+                if (ret == UV_ENOSYS || ret == UV_EAGAIN)
+                  {
+                    if (UVSOCKS_BUF_MAX <= link->read_buf_len)
+                      {
+                        uv_read_stop ((uv_stream_t *) link->read_tcp);
+                        uv_write (&link->write_req,
+                                  (uv_stream_t *) (uv_stream_t*)link->write_link->read_tcp,
+                                  &buf,
+                                  1,
+                                  uvsocks_read_start_after_free_packet);
+                      }
+                    return;
+                  }
+
+                if (uvsocks->callback_func)
+                  uvsocks->callback_func (uvsocks,
+                                          UVSOCKS_ERROR_TCP_SOCKS_READ,
+                                          &tunnel->param,
+                                          uvsocks->callback_data);
+                uvsocks_remove_session (tunnel, session);
+                return;
+              }
+            consume = ret;
+          }
+          break;
         }
-        break;
-      case UVSOCKS_STAGE_ESTABLISH:
-      case UVSOCKS_STAGE_BIND:
-        {
-          if (session->socks.read_buf[0] != 0x05 ||
-              session->socks.read_buf[1] != 0x00)
-            {
-              if (uvsocks->callback_func)
-                uvsocks->callback_func (uvsocks,
-                                        UVSOCKS_ERROR_SOCKS_COMMAND,
-                                        &tunnel->param,
-                                        uvsocks->callback_data);
-              uvsocks_remove_session (tunnel, session);
-              break;
-            }
 
-          if (session->stage == UVSOCKS_STAGE_ESTABLISH &&
-              tunnel->param.is_forward == 0)
-            {
-              int port;
+      data += consume;
+      link->read_buf_len -= consume;
+    } while (consume && link->read_buf_len > 0);
 
-              memcpy (&port, &session->socks.read_buf[8], 2);
-              port = htons(port);
-
-              strlcpy (tunnel->param.listen_host, uvsocks->host, sizeof (tunnel->param.listen_host));
-              tunnel->param.listen_port = port;
-
-              if (uvsocks->callback_func)
-                uvsocks->callback_func (uvsocks,
-                                        UVSOCKS_OK_SOCKS_BIND,
-                                        &tunnel->param,
-                                        uvsocks->callback_data);
-
-              uvsocks_session_set_stage (session, UVSOCKS_STAGE_BIND);
-              break;
-            }
-
-          if (session->stage == UVSOCKS_STAGE_BIND &&
-              tunnel->param.is_forward == 0)
-            {
-              uvsocks_dns_resolve (uvsocks,
-                                   tunnel->param.destination_host,
-                                   tunnel->param.destination_port,
-                                   uvsocks_connect_real,
-                                   &session->local);
-              break;
-            }
-
-          if (uvsocks->callback_func)
-            uvsocks->callback_func (uvsocks,
-                                    UVSOCKS_OK_SOCKS_CONNECT,
-                                    &tunnel->param,
-                                    uvsocks->callback_data);
-
-          uvsocks_session_set_stage (session, UVSOCKS_STAGE_TUNNEL);
-          if (uv_read_start ((uv_stream_t *) session->local.read_tcp,
-                             uvsocks_alloc_buffer,
-                             uvsocks_read))
-            {
-              if (uvsocks->callback_func)
-                uvsocks->callback_func (uvsocks,
-                                        UVSOCKS_ERROR_TCP_READ_START,
-                                        &tunnel->param,
-                                        uvsocks->callback_data);
-              uvsocks_remove_session (tunnel, session);
-              break;
-            }
-        }
-        break;
-      case UVSOCKS_STAGE_TUNNEL:
-       {
-          int ret;
-
-          link->read_buf_len += nread;
-          ret = uvsocks_write_packet (link->write_link,
-                                      link->read_buf,
-                                      link->read_buf_len);
-          if (ret < 0)
-            {
-              UvSocksTunnel *tunnel = session->tunnel;
-              UvSocks *uvsocks = tunnel->uvsocks;
-
-              if (ret == UV_ENOSYS || ret == UV_EAGAIN)
-                {
-                  if (UVSOCKS_BUF_MAX <= link->read_buf_len)
-                    uvsocks_write_packet0 (link,
-                                           link->read_buf,
-                                           link->read_buf_len);
-
-                  break;
-                }
-
-              if (uvsocks->callback_func)
-                uvsocks->callback_func (uvsocks,
-                                        UVSOCKS_ERROR_TCP_SOCKS_READ,
-                                        &tunnel->param,
-                                        uvsocks->callback_data);
-              uvsocks_remove_session (tunnel, session);
-              break;
-            }
-
-          link->read_buf_len -= ret;
-        }
-       break;
-     }
+  if (consume && link->read_buf_len)
+    memcpy (link->read_buf, data, link->read_buf_len);
 }
 
 static UvSocksSession *
