@@ -1192,8 +1192,6 @@ uvsocks_get_status_string (UvSocksStatus status)
         return "socks error: command";
       case UVSOCKS_ERROR_SOCKS_CMD_BIND:
         return "socks error: bind";
-      case UVSOCKS_ERROR_TCP_INSUFFICIENT_BUFFER:
-        return "tcp error: insufficient buffer";
     }
 
   return "unknown error";
