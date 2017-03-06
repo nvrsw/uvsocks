@@ -95,8 +95,19 @@ typedef enum _UvSocksStage
 
 typedef struct _UvSocksTunnel UvSocksTunnel;
 typedef struct _UvSocksSession UvSocksSession;
-
 typedef struct _UvSocksSessionLink UvSocksSessionLink;
+
+typedef void (*UvSocksDnsResolveFunc) (UvSocksSessionLink *link,
+                                       struct addrinfo    *resolved);
+
+typedef struct _UvSocksDnsResolve UvSocksDnsResolve;
+struct _UvSocksDnsResolve
+{
+  uv_getaddrinfo_t      getaddrinfo;
+  UvSocksDnsResolveFunc func;
+  void                 *data;
+};
+
 struct _UvSocksSessionLink
 {
   UvSocksSession       *session;
@@ -106,6 +117,8 @@ struct _UvSocksSessionLink
   size_t                read_buf_len;
   UvSocksSessionLink   *write_link;
   uv_write_t            write_req;
+
+  UvSocksDnsResolve     dns_resolve;
 };
 
 struct _UvSocksSession
@@ -153,15 +166,6 @@ struct _UvSocksMessage
   UvSocksFunc   func;
   void         *data;
   void        (*destroy_data) (void *data);
-};
-
-typedef void (*UvSocksDnsResolveFunc) (UvSocksSessionLink *link,
-                                       struct addrinfo    *resolved);
-typedef struct _UvSocksDnsResolve UvSocksDnsResolve;
-struct _UvSocksDnsResolve
-{
-  UvSocksDnsResolveFunc func;
-  void                 *data;
 };
 
 typedef struct _UvSocksPacketReq UvSocksPacketReq;
@@ -466,8 +470,7 @@ uvsocks_dns_resolved (uv_getaddrinfo_t  *resolver,
                       int                status,
                       struct addrinfo   *resolved)
 {
-  UvSocksDnsResolve *d = resolver->data;
-  UvSocksSessionLink *link = d->data;
+  UvSocksSessionLink *link = resolver->data;
 
   if (status < 0)
     {
@@ -482,17 +485,14 @@ uvsocks_dns_resolved (uv_getaddrinfo_t  *resolver,
                                 uvsocks->callback_data);
       uvsocks_remove_session (tunnel, session);
 
-      goto done;
+      uv_freeaddrinfo (resolved);
+      return;
     }
 
-  if (d->func)
-    d->func (link, resolved);
-
-done:
+  if (link->dns_resolve.func)
+    link->dns_resolve.func (link, resolved);
 
   uv_freeaddrinfo (resolved);
-  free (resolver);
-  free (d);
 }
 
 static void
@@ -503,8 +503,6 @@ uvsocks_dns_resolve (UvSocks              *uvsocks,
                      void                 *data)
 {
   UvSocksSessionLink *link = data;
-  UvSocksDnsResolve *d;
-  uv_getaddrinfo_t *resolver;
   struct addrinfo hints;
   int status;
   char s[128];
@@ -516,41 +514,13 @@ uvsocks_dns_resolve (UvSocks              *uvsocks,
   hints.ai_protocol = IPPROTO_TCP;
   hints.ai_flags = 0;
 
-  resolver = malloc (sizeof (*resolver));
-  if (!resolver)
-    {
-      UvSocksSession *session = link->session;
-      UvSocksTunnel *tunnel = session->tunnel;
 
-      if (uvsocks->callback_func)
-        uvsocks->callback_func (uvsocks,
-                                UVSOCKS_ERROR,
-                                &tunnel->param,
-                                uvsocks->callback_data);
-      return;
-    }
-
-  d = malloc (sizeof (*d));
-  if (!d)
-    {
-      UvSocksSession *session = link->session;
-      UvSocksTunnel *tunnel = session->tunnel;
-
-      if (uvsocks->callback_func)
-        uvsocks->callback_func (uvsocks,
-                                UVSOCKS_ERROR,
-                                &tunnel->param,
-                                uvsocks->callback_data);
-      free (resolver);
-      return;
-    }
-
-  d->data = data;
-  d->func = func;
-  resolver->data = d;
+  link->dns_resolve.data = data;
+  link->dns_resolve.func = func;
+  link->dns_resolve.getaddrinfo.data = link;
 
   status = uv_getaddrinfo (uvsocks->loop,
-                           resolver,
+                           &link->dns_resolve.getaddrinfo,
                            uvsocks_dns_resolved,
                            host,
                            s,
@@ -567,8 +537,6 @@ uvsocks_dns_resolve (UvSocks              *uvsocks,
                               &tunnel->param,
                               uvsocks->callback_data);
     uvsocks_remove_session (tunnel, session);
-    free (resolver);
-    free (d);
   }
 }
 
@@ -695,20 +663,6 @@ uvsocks_connect_real (UvSocksSessionLink *link,
                   link->read_tcp,
                   (const struct sockaddr *)resolved->ai_addr,
                   uvsocks_connected);
-}
-
-static void
-uvsocks_connect (UvSocks              *uvsocks,
-                 const char           *host,
-                 const int             port,
-                 UvSocksDnsResolveFunc callback_func,
-                 void                 *callback_data)
-{
-  uvsocks_dns_resolve (uvsocks,
-                       host,
-                       port,
-                       callback_func,
-                       callback_data);
 }
 
 static int
@@ -928,11 +882,11 @@ uvsocks_read (uv_stream_t    *stream,
           if (session->stage == UVSOCKS_STAGE_BIND &&
               tunnel->param.is_forward == 0)
             {
-              uvsocks_connect (uvsocks,
-                               tunnel->param.destination_host,
-                               tunnel->param.destination_port,
-                               uvsocks_connect_real,
-                              &session->local);
+              uvsocks_dns_resolve (uvsocks,
+                                   tunnel->param.destination_host,
+                                   tunnel->param.destination_port,
+                                   uvsocks_connect_real,
+                                   &session->local);
               break;
             }
 
@@ -1089,11 +1043,11 @@ uvsocks_local_new_connection (uv_stream_t *stream,
                             &tunnel->param,
                             uvsocks->callback_data);
 
-  uvsocks_connect (uvsocks,
-                   uvsocks->host,
-                   uvsocks->port,
-                   uvsocks_connect_real,
-                   &session->socks);
+  uvsocks_dns_resolve (uvsocks,
+                       uvsocks->host,
+                       uvsocks->port,
+                       uvsocks_connect_real,
+                       &session->socks);
 }
 
 static void
@@ -1183,11 +1137,12 @@ uvsocks_run (UvSocks *uvsocks)
         session = uvsocks_create_session (&uvsocks->tunnels[i]);
         if (!session)
           continue;
-        uvsocks_connect (uvsocks,
-                         uvsocks->host,
-                         uvsocks->port,
-                         uvsocks_connect_real,
-                         &session->socks);
+
+        uvsocks_dns_resolve (uvsocks,
+                             uvsocks->host,
+                             uvsocks->port,
+                             uvsocks_connect_real,
+                             &session->socks);
       }
 }
 
