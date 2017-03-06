@@ -457,14 +457,6 @@ uvsocks_free (UvSocks *uvsocks)
   uvsocks_send_async (uvsocks, uvsocks_quit, NULL, NULL);
 }
 
-static int
-uvsocks_start_read (UvSocksSessionLink *link)
-{
-  return uv_read_start ((uv_stream_t *) link->read_tcp,
-                                        uvsocks_alloc_buffer,
-                                        uvsocks_read);
-}
-
 static void
 uvsocks_dns_resolved (uv_getaddrinfo_t  *resolver,
                       int                status,
@@ -604,7 +596,9 @@ uvsocks_connected (uv_connect_t *connect,
   else
     uvsocks_session_set_stage (session, UVSOCKS_STAGE_TUNNEL);
 
-  if (uvsocks_start_read (link))
+  if (uv_read_start ((uv_stream_t *) link->read_tcp,
+                     uvsocks_alloc_buffer,
+                     uvsocks_read))
     {
       if (uvsocks->callback_func)
         uvsocks->callback_func (uvsocks,
@@ -897,7 +891,9 @@ uvsocks_read (uv_stream_t    *stream,
                                     uvsocks->callback_data);
 
           uvsocks_session_set_stage (session, UVSOCKS_STAGE_TUNNEL);
-          if (uvsocks_start_read (&session->local))
+          if (uv_read_start ((uv_stream_t *) session->local.read_tcp,
+                             uvsocks_alloc_buffer,
+                             uvsocks_read))
             {
               if (uvsocks->callback_func)
                 uvsocks->callback_func (uvsocks,
