@@ -671,9 +671,10 @@ uvsocks_read_start_after_free_packet (uv_write_t *req,
   UvSocksSessionLink *link = container_of (req, UvSocksSessionLink, write_req);
 
   link->read_buf_len = 0;
-  uv_read_start ((uv_stream_t *) link->read_tcp,
-                                 uvsocks_alloc_buffer,
-                                 uvsocks_read);
+  if (link->read_tcp)
+    uv_read_start ((uv_stream_t *) link->read_tcp,
+                                   uvsocks_alloc_buffer,
+                                   uvsocks_read);
 }
 
 static void
@@ -912,15 +913,12 @@ uvsocks_read (uv_stream_t    *stream,
 
                 if (ret == UV_ENOSYS || ret == UV_EAGAIN)
                   {
-                    if (UVSOCKS_BUF_MAX <= link->read_buf_len)
-                      {
-                        uv_read_stop ((uv_stream_t *) link->read_tcp);
-                        uv_write (&link->write_req,
-                                  (uv_stream_t *) (uv_stream_t*)link->write_link->read_tcp,
-                                  &buf,
-                                  1,
-                                  uvsocks_read_start_after_free_packet);
-                      }
+                    uv_read_stop ((uv_stream_t *) link->read_tcp);
+                    uv_write (&link->write_req,
+                              (uv_stream_t *) (uv_stream_t*)link->write_link->read_tcp,
+                              &buf,
+                              1,
+                              uvsocks_read_start_after_free_packet);
                     return;
                   }
 
@@ -939,7 +937,7 @@ uvsocks_read (uv_stream_t    *stream,
 
       data += consume;
       link->read_buf_len -= consume;
-    } while (consume && link->read_buf_len > 0);
+    } while (consume && link->read_buf_len);
 
   if (consume && link->read_buf_len)
     memcpy (link->read_buf, data, link->read_buf_len);
