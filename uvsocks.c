@@ -87,7 +87,7 @@ typedef enum _UvSocksStage
   UVSOCKS_STAGE_TUNNEL              = 0x05,
 } UvSocksStage;
 
-#define UVSOCKS_SESSION_MAX           16
+#define UVSOCKS_SESSION_MAX           5
 
 typedef struct _UvSocksTunnel UvSocksTunnel;
 typedef struct _UvSocksSession UvSocksSession;
@@ -131,7 +131,7 @@ struct _UvSocksTunnel
   UvSocksParam           param;
   uv_tcp_t              *listen_tcp;
   int                    n_sessions;
-  UvSocksSession        *sessions[UVSOCKS_SESSION_MAX];
+  UvSocksSession         sessions[UVSOCKS_SESSION_MAX];
 };
 
 struct _UvSocks
@@ -358,12 +358,11 @@ uvsocks_free_handle_with_session (uv_handle_t *handle)
       int s;
 
       for (s = 0; s < UVSOCKS_SESSION_MAX; s++)
-        if (session->tunnel->sessions[s] == session)
+        if (&session->tunnel->sessions[s] == session)
           {
             UvSocksTunnel  *tunnel = session->tunnel;
             tunnel->n_sessions--;
-            free (tunnel->sessions[s]);
-            tunnel->sessions[s] = NULL;
+            session->tunnel = NULL;
             break;
           }
     }
@@ -408,7 +407,7 @@ uvsocks_free_tunnel (UvSocks *uvsocks)
 
       for (s = 0; s < uvsocks->tunnels[t].n_sessions; s++)
         uvsocks_remove_session (&uvsocks->tunnels[t],
-                                uvsocks->tunnels[t].sessions[s]);
+                                &uvsocks->tunnels[t].sessions[s]);
     }
 }
 
@@ -454,8 +453,13 @@ uvsocks_dns_resolved (uv_getaddrinfo_t  *resolver,
   if (status < 0)
     {
       UvSocksSession *session = link->session;
-      UvSocksTunnel *tunnel = session->tunnel;
-      UvSocks *uvsocks = tunnel->uvsocks;
+      UvSocksTunnel *tunnel;
+      UvSocks *uvsocks;
+
+      if (!session->tunnel)
+        return;
+      tunnel = session->tunnel;
+      uvsocks = tunnel->uvsocks;
 
       if (uvsocks->callback_func)
         uvsocks->callback_func (uvsocks,
@@ -507,8 +511,13 @@ uvsocks_dns_resolve (UvSocks              *uvsocks,
   if (status)
   {
     UvSocksSession *session = link->session;
-    UvSocksTunnel *tunnel = session->tunnel;
-    UvSocks *uvsocks = tunnel->uvsocks;
+    UvSocksTunnel *tunnel;
+    UvSocks *uvsocks;
+
+    if (!session->tunnel)
+      return;
+    tunnel = session->tunnel;
+    uvsocks = tunnel->uvsocks;
 
     if (uvsocks->callback_func)
       uvsocks->callback_func (uvsocks,
@@ -537,8 +546,13 @@ uvsocks_connected (uv_connect_t *connect,
 {
   UvSocksSessionLink *link = connect->data;
   UvSocksSession *session = link->session;
-  UvSocksTunnel *tunnel = session->tunnel;
-  UvSocks *uvsocks = tunnel->uvsocks;
+  UvSocksTunnel *tunnel;
+  UvSocks *uvsocks;
+
+  if (!session->tunnel)
+    return;
+  tunnel = session->tunnel;
+  uvsocks = tunnel->uvsocks;
 
   if (status < 0)
     {
@@ -604,8 +618,12 @@ uvsocks_connect_real (UvSocksSessionLink *link,
                       struct addrinfo    *resolved)
 {
   UvSocksSession *session = link->session;
-  UvSocks *uvsocks = session->tunnel->uvsocks;
+  UvSocks *uvsocks;
   uv_connect_t *connect;
+
+  if (!session->tunnel)
+    return;
+  uvsocks = session->tunnel->uvsocks;
 
   connect = malloc (sizeof (*connect));
   if (!connect)
@@ -938,7 +956,7 @@ uvsocks_create_session (UvSocksTunnel  *tunnel)
     int s;
 
     for (s = 0; s < UVSOCKS_SESSION_MAX; s++)
-      if (tunnel->sessions[s] == NULL)
+      if (tunnel->sessions[s].tunnel == NULL)
         {
           id = s;
           break;
@@ -950,10 +968,8 @@ uvsocks_create_session (UvSocksTunnel  *tunnel)
     return NULL;
 
   tunnel->n_sessions++;
-  session = calloc (sizeof (UvSocksSession), 1);
-  if (!session)
-    return NULL;
 
+  session = &tunnel->sessions[id];
   session->local.read_buf_len = 0;
   session->local.session = session;
   session->local.write_link = &session->socks;
@@ -966,8 +982,7 @@ uvsocks_create_session (UvSocksTunnel  *tunnel)
 
   uvsocks_session_set_stage (session, UVSOCKS_STAGE_NONE);
 
-  tunnel->sessions[id] = session;
-  return tunnel->sessions[id];
+  return session;
 }
 
 static void
