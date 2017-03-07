@@ -862,9 +862,6 @@ uvsocks_read (uv_stream_t    *stream,
             ret = uv_try_write ((uv_stream_t*)link->write_link->read_tcp, &buf, 1);
             if (ret < 0)
               {
-                UvSocksTunnel *tunnel = session->tunnel;
-                UvSocks *uvsocks = tunnel->uvsocks;
-
                 if (ret == UV_ENOSYS || ret == UV_EAGAIN)
                   {
                     uv_read_stop ((uv_stream_t *) link->read_tcp);
