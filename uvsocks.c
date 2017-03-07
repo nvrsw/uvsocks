@@ -697,8 +697,8 @@ uvsocks_read (uv_stream_t    *stream,
             if (link->read_buf_len < 2)
               break;
 
-            if (session->socks.read_buf[0] != 0x05 ||
-                session->socks.read_buf[1] != UVSOCKS_AUTH_PASSWD)
+            if (data[0] != 0x05 ||
+                data[1] != UVSOCKS_AUTH_PASSWD)
               {
                 uvsocks_set_status (tunnel, UVSOCKS_ERROR_SOCKS_HANDSHAKE);
                 uvsocks_remove_session (tunnel, session);
@@ -742,8 +742,8 @@ uvsocks_read (uv_stream_t    *stream,
             if (link->read_buf_len < 2)
               break;
 
-            if (session->socks.read_buf[0] != 0x01 ||
-                session->socks.read_buf[1] != UVSOCKS_AUTH_ALLOW)
+            if (data[0] != 0x01 ||
+                data[1] != UVSOCKS_AUTH_ALLOW)
               {
                 uvsocks_set_status (tunnel, UVSOCKS_ERROR_SOCKS_AUTHENTICATION);
                 uvsocks_remove_session (tunnel, session);
@@ -802,8 +802,8 @@ uvsocks_read (uv_stream_t    *stream,
             if (link->read_buf_len < 10)
               break;
 
-            if (session->socks.read_buf[0] != 0x05 ||
-                session->socks.read_buf[1] != 0x00)
+            if (data[0] != 0x05 ||
+                data[1] != 0x00)
               {
                 uvsocks_set_status (tunnel, UVSOCKS_ERROR_SOCKS_COMMAND);
                 uvsocks_remove_session (tunnel, session);
@@ -817,7 +817,7 @@ uvsocks_read (uv_stream_t    *stream,
               {
                 int port;
 
-                memcpy (&port, &session->socks.read_buf[8], 2);
+                memcpy (&port, &data[8], 2);
                 port = htons(port);
 
                 strlcpy (tunnel->param.listen_host, uvsocks->host, sizeof (tunnel->param.listen_host));
@@ -858,7 +858,7 @@ uvsocks_read (uv_stream_t    *stream,
             int ret;
             uv_buf_t buf;
 
-            buf = uv_buf_init (link->read_buf, (uint32_t) link->read_buf_len);
+            buf = uv_buf_init (data, (uint32_t) link->read_buf_len);
             ret = uv_try_write ((uv_stream_t*)link->write_link->read_tcp, &buf, 1);
             if (ret < 0)
               {
