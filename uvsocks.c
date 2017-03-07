@@ -119,6 +119,7 @@ struct _UvSocksSessionLink
 
 struct _UvSocksSession
 {
+  int                    use;
   UvSocksTunnel         *tunnel;
   UvSocksStage           stage;
   UvSocksSessionLink     socks;
@@ -358,7 +359,7 @@ uvsocks_free_handle_with_session (uv_handle_t *handle)
       UvSocksTunnel  *tunnel = session->tunnel;
 
       tunnel->n_sessions--;
-      session->tunnel = NULL;
+      session->use = 0;
     }
 }
 
@@ -895,7 +896,7 @@ uvsocks_create_session (UvSocksTunnel  *tunnel)
     int s;
 
     for (s = 0; s < UVSOCKS_SESSION_MAX; s++)
-      if (tunnel->sessions[s].tunnel == NULL)
+      if (tunnel->sessions[s].use == 0)
         {
           id = s;
           break;
@@ -918,6 +919,7 @@ uvsocks_create_session (UvSocksTunnel  *tunnel)
   session->socks.write_link = &session->local;
 
   session->tunnel = tunnel;
+  session->use = 1;
 
   uvsocks_session_set_stage (session, UVSOCKS_STAGE_NONE);
 
