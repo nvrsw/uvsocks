@@ -355,16 +355,10 @@ uvsocks_free_handle_with_session (uv_handle_t *handle)
 
   if (!session->socks.read_tcp && !session->local.read_tcp)
     {
-      int s;
+      UvSocksTunnel  *tunnel = session->tunnel;
 
-      for (s = 0; s < UVSOCKS_SESSION_MAX; s++)
-        if (&session->tunnel->sessions[s] == session)
-          {
-            UvSocksTunnel  *tunnel = session->tunnel;
-            tunnel->n_sessions--;
-            session->tunnel = NULL;
-            break;
-          }
+      tunnel->n_sessions--;
+      session->tunnel = NULL;
     }
 }
 
