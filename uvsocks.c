@@ -325,31 +325,6 @@ uvsocks_session_set_stage (UvSocksSession *session,
   session->stage = stage;
 }
 
-static int
-uvsocks_get_empty_session (UvSocksTunnel  *tunnel)
-{
-  int s;
-
-  for (s = 0; s < UVSOCKS_SESSION_MAX; s++)
-    if (tunnel->sessions[s] == NULL)
-      return s;
-  return -1;
-}
-
-static void
-uvsocks_set_empty_session (UvSocksTunnel  *tunnel,
-                           UvSocksSession *session)
-{
-  int s;
-
-  for (s = 0; s < UVSOCKS_SESSION_MAX; s++)
-    if (tunnel->sessions[s] == session)
-      {
-        tunnel->sessions[s] = NULL;
-        break;
-      }
-}
-
 static void
 uvsocks_alloc_buffer (uv_handle_t *handle,
                       size_t       suggested_size,
@@ -376,13 +351,21 @@ uvsocks_free_handle_with_session (uv_handle_t *handle)
   UvSocksSession *session = link->session;
 
   free (handle);
+  link->read_tcp = NULL;
 
   if (!session->socks.read_tcp && !session->local.read_tcp)
     {
-      UvSocksTunnel *tunnel = session->tunnel;
+      int s;
 
-      tunnel->n_sessions--;
-      free (session);
+      for (s = 0; s < UVSOCKS_SESSION_MAX; s++)
+        if (session->tunnel->sessions[s] == session)
+          {
+            UvSocksTunnel  *tunnel = session->tunnel;
+            tunnel->n_sessions--;
+            free (tunnel->sessions[s]);
+            tunnel->sessions[s] = NULL;
+            break;
+          }
     }
 }
 
@@ -399,11 +382,12 @@ uvsocks_remove_session (UvSocksTunnel  *tunnel,
   if (!session)
     return;
 
-  uvsocks_set_empty_session (tunnel, session);
-  if (session->socks.read_tcp)
+  if (session->socks.read_tcp &&
+      !uv_is_closing ((const uv_handle_t *)session->socks.read_tcp))
     uv_close ((uv_handle_t *) session->socks.read_tcp, uvsocks_free_handle_with_session);
 
-  if (session->local.read_tcp)
+  if (session->local.read_tcp &&
+      !uv_is_closing ((const uv_handle_t *)session->local.read_tcp))
     uv_close ((uv_handle_t *) session->local.read_tcp, uvsocks_free_handle_with_session);
 }
 
@@ -426,8 +410,6 @@ uvsocks_free_tunnel (UvSocks *uvsocks)
         uvsocks_remove_session (&uvsocks->tunnels[t],
                                 uvsocks->tunnels[t].sessions[s]);
     }
-
-  free (uvsocks->tunnels);
 }
 
 static void
@@ -458,6 +440,7 @@ uvsocks_free (UvSocks *uvsocks)
       free (uvsocks->loop);
     }
 
+  free (uvsocks->tunnels);
   free (uvsocks);
 }
 
@@ -948,10 +931,21 @@ static UvSocksSession *
 uvsocks_create_session (UvSocksTunnel  *tunnel)
 {
   UvSocksSession *session;
-  int empty;
+  int id;
 
-  empty = uvsocks_get_empty_session (tunnel);
-  if (empty < 0 ||
+  id = -1;
+  {
+    int s;
+
+    for (s = 0; s < UVSOCKS_SESSION_MAX; s++)
+      if (tunnel->sessions[s] == NULL)
+        {
+          id = s;
+          break;
+        }
+  }
+
+  if (id < 0 ||
       tunnel->n_sessions >= UVSOCKS_SESSION_MAX)
     return NULL;
 
@@ -972,8 +966,8 @@ uvsocks_create_session (UvSocksTunnel  *tunnel)
 
   uvsocks_session_set_stage (session, UVSOCKS_STAGE_NONE);
 
-  tunnel->sessions[empty] = session;
-  return session;
+  tunnel->sessions[id] = session;
+  return tunnel->sessions[id];
 }
 
 static void
