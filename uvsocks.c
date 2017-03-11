@@ -680,9 +680,12 @@ uvsocks_read (uv_stream_t    *stream,
 
   link->read_buf_len += nread;
   data = link->read_buf;
+  consume = 0;
   do
     {
-      consume = 0;
+      size_t pkt_len;
+
+      pkt_len = 0;
       switch (session->stage)
         {
         case UVSOCKS_STAGE_NONE:
@@ -699,7 +702,7 @@ uvsocks_read (uv_stream_t    *stream,
                 uvsocks_remove_session (tunnel, session);
                 return;
               }
-            consume = 2;
+            pkt_len = 2;
 
             {
               UvSocksPacketReq *wr;
@@ -744,7 +747,7 @@ uvsocks_read (uv_stream_t    *stream,
                 uvsocks_remove_session (tunnel, session);
                 return;
               }
-            consume = 2;
+            pkt_len = 2;
 
             {
               UvSocksPacketReq *wr;
@@ -805,7 +808,7 @@ uvsocks_read (uv_stream_t    *stream,
                 return;
               }
 
-            consume = 10;
+            pkt_len = 10;
 
             if (session->stage == UVSOCKS_STAGE_ESTABLISH &&
                 tunnel->param.is_forward == 0)
@@ -872,14 +875,18 @@ uvsocks_read (uv_stream_t    *stream,
                 uvsocks_remove_session (tunnel, session);
                 return;
               }
-            consume = ret;
+            pkt_len = ret;
           }
           break;
         }
 
-      data += consume;
-      link->read_buf_len -= consume;
-    } while (consume && link->read_buf_len);
+      if (pkt_len == 0)
+        break;
+
+      consume += pkt_len;
+      data += pkt_len;
+      link->read_buf_len -= pkt_len;
+    } while (link->read_buf_len > 0);
 
   if (consume && link->read_buf_len)
     memcpy (link->read_buf, data, link->read_buf_len);
