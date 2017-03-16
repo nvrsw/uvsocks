@@ -128,8 +128,8 @@ struct _UvSocksSession
 
   int                    id;
   UvSocksStage           stage;
-  UvSocksSessionLink     socks;
-  UvSocksSessionLink     local;
+  UvSocksSessionLink     socks_link;
+  UvSocksSessionLink     local_link;
 };
 
 struct _UvSocksTunnel
@@ -448,17 +448,17 @@ uvsocks_create_session (UvSocksTunnel *tunnel)
   if (!session)
     return NULL;
 
-  session->local.read_buf_len = 0;
-  session->local.uvsocks = tunnel->uvsocks;
-  session->local.tunnel = tunnel;
-  session->local.session = session;
-  session->local.write_link = &session->socks;
+  session->local_link.read_buf_len = 0;
+  session->local_link.uvsocks = tunnel->uvsocks;
+  session->local_link.tunnel = tunnel;
+  session->local_link.session = session;
+  session->local_link.write_link = &session->socks_link;
 
-  session->socks.read_buf_len = 0;
-  session->socks.uvsocks = tunnel->uvsocks;
-  session->socks.tunnel = tunnel;
-  session->socks.session = session;
-  session->socks.write_link = &session->local;
+  session->socks_link.read_buf_len = 0;
+  session->socks_link.uvsocks = tunnel->uvsocks;
+  session->socks_link.tunnel = tunnel;
+  session->socks_link.session = session;
+  session->socks_link.write_link = &session->local_link;
 
   uvsocks_session_set_stage (session, UVSOCKS_STAGE_NONE);
 
@@ -506,22 +506,22 @@ uvsocks_remove_session (UvSocksTunnel  *tunnel,
   if (!session)
     return;
 
-  if (session->socks.read_tcp &&
-      !uv_is_closing ((const uv_handle_t *)session->socks.read_tcp))
+  if (session->socks_link.read_tcp &&
+      !uv_is_closing ((const uv_handle_t *)session->socks_link.read_tcp))
     {
       uv_mutex_lock (&tunnel->uvsocks->close_mutex);
       tunnel->uvsocks->close_cb_called++;
       uv_mutex_unlock (&tunnel->uvsocks->close_mutex);
-      uv_close ((uv_handle_t *) session->socks.read_tcp,
+      uv_close ((uv_handle_t *) session->socks_link.read_tcp,
                 uvsocks_close_handle_link);
     }
-  if (session->local.read_tcp &&
-      !uv_is_closing ((const uv_handle_t *)session->local.read_tcp))
+  if (session->local_link.read_tcp &&
+      !uv_is_closing ((const uv_handle_t *)session->local_link.read_tcp))
     {
       uv_mutex_lock (&tunnel->uvsocks->close_mutex);
       tunnel->uvsocks->close_cb_called++;
       uv_mutex_unlock (&tunnel->uvsocks->close_mutex);
-      uv_close ((uv_handle_t *) session->local.read_tcp,
+      uv_close ((uv_handle_t *) session->local_link.read_tcp,
                 uvsocks_close_handle_link);
     }
 }
@@ -677,7 +677,7 @@ uvsocks_connected (uv_connect_t *connect,
 
   uvsocks_set_status (link->tunnel, UVSOCKS_OK_TCP_CONNECTED);
 
-  if (link->read_tcp == link->session->socks.read_tcp)
+  if (link->read_tcp == link->session->socks_link.read_tcp)
     {
       UvSocksPacketReq *wr;
       char buf[100];
@@ -841,7 +841,7 @@ uvsocks_read (uv_stream_t    *stream,
               wr->stage = UVSOCKS_STAGE_AUTHENTICATE;
 
               uv_write ((uv_write_t *) wr,
-                        (uv_stream_t *) session->socks.read_tcp,
+                        (uv_stream_t *) session->socks_link.read_tcp,
                         &wr->buf,
                         1,
                         uvsocks_free_packet_after_set_stage);
@@ -900,7 +900,7 @@ uvsocks_read (uv_stream_t    *stream,
                 wr->stage = UVSOCKS_STAGE_ESTABLISH;
 
                 uv_write ((uv_write_t *) wr,
-                          (uv_stream_t *) session->socks.read_tcp,
+                          (uv_stream_t *) session->socks_link.read_tcp,
                           &wr->buf,
                           1,
                           uvsocks_free_packet_after_set_stage);
@@ -948,14 +948,14 @@ uvsocks_read (uv_stream_t    *stream,
                                      tunnel->param.destination_host,
                                      tunnel->param.destination_port,
                                      uvsocks_connect_real,
-                                     &session->local);
+                                     &session->local_link);
                 break;
               }
 
             uvsocks_set_status (tunnel, UVSOCKS_OK_SOCKS_CONNECT);
 
             uvsocks_session_set_stage (session, UVSOCKS_STAGE_TUNNEL);
-            if (uv_read_start ((uv_stream_t *) session->local.read_tcp,
+            if (uv_read_start ((uv_stream_t *) session->local_link.read_tcp,
                                uvsocks_alloc_buffer,
                                uvsocks_read))
               {
@@ -1028,23 +1028,23 @@ uvsocks_local_new_connection (uv_stream_t *stream,
       return;
     }
 
-  session->local.read_tcp = malloc (sizeof (*session->local.read_tcp));
-  if (!session->local.read_tcp)
+  session->local_link.read_tcp = malloc (sizeof (*session->local_link.read_tcp));
+  if (!session->local_link.read_tcp)
     {
       uvsocks_set_status (tunnel, UVSOCKS_ERROR);
       free (session);
       return;
     }
 
-  session->local.read_tcp->data = &session->local;
+  session->local_link.read_tcp->data = &session->local_link;
 
-  uv_tcp_init (uvsocks->loop, session->local.read_tcp);
-  if (uv_accept (stream, (uv_stream_t *) session->local.read_tcp))
+  uv_tcp_init (uvsocks->loop, session->local_link.read_tcp);
+  if (uv_accept (stream, (uv_stream_t *) session->local_link.read_tcp))
     {
       uvsocks_set_status (tunnel, UVSOCKS_ERROR_TCP_ACCEPT);
 
-      if (session->local.read_tcp)
-        uv_close ((uv_handle_t *) session->local.read_tcp,
+      if (session->local_link.read_tcp)
+        uv_close ((uv_handle_t *) session->local_link.read_tcp,
                   uvsocks_close_handle);
       free (session);
       return;
@@ -1056,7 +1056,7 @@ uvsocks_local_new_connection (uv_stream_t *stream,
                        uvsocks->host,
                        uvsocks->port,
                        uvsocks_connect_real,
-                       &session->socks);
+                       &session->socks_link);
 }
 
 static void
@@ -1139,7 +1139,7 @@ uvsocks_run (UvSocks *uvsocks)
                              uvsocks->host,
                              uvsocks->port,
                              uvsocks_connect_real,
-                             &session->socks);
+                             &session->socks_link);
       }
 }
 
