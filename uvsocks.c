@@ -17,6 +17,8 @@
 
 #ifdef _WIN32
 #define strlcpy(x, y, z) strncpy_s((x), (z), (y), _TRUNCATE)
+#else
+#include <bsd/string.h>
 #endif
 
 #include "uvsocks.h"
@@ -33,9 +35,7 @@
 #include <unistd.h>
 #endif
 
-#ifdef _WIN32
 #define container_of(ptr, type, member) (type *)((char *)ptr - offsetof (type, member))
-#endif
 
 #define UVSOCKS_BUF_MAX (1024 * 512)
 
@@ -773,7 +773,7 @@ uvsocks_read_start_after_free_packet (uv_write_t *req,
 static void
 uvsocks_read (uv_stream_t    *stream,
               ssize_t         nread,
-              const uv_buf_t *buf)
+              const uv_buf_t *buf_)
 {
   UvSocksSessionLink *link = stream->data;
   UvSocksSession *session = link->session;
@@ -1162,6 +1162,8 @@ uvsocks_get_status_string (UvSocksStatus status)
         return "socks success: bind";
       case UVSOCKS_ERROR:
         return "normal error";
+      case UVSOCKS_ERROR_PARAMETERS:
+        return "invalid parameters";
       case UVSOCKS_ERROR_TCP_LOCAL_SERVER:
         return "tcp error: local server";
       case UVSOCKS_ERROR_TCP_PORT:
