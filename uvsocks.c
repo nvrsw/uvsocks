@@ -1129,6 +1129,8 @@ fail:
     uv_close ((uv_handle_t *) tunnel->listen_tcp,
               uvsocks_close_handle_listen);
 
+  tunnel->listen_tcp = NULL;
+
   return;
 }
 
