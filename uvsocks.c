@@ -545,7 +545,8 @@ uvsocks_remove_session (UvSocksTunnel  *tunnel,
 }
 
 static void
-uvsocks_remove_tunnel (UvSocks *socks)
+uvsocks_remove_tunnel (UvSocks  *socks,
+                       void     *data)
 {
   int t;
   int s;
@@ -582,14 +583,15 @@ uvsocks_free (UvSocks *socks)
   socks->close = 1;
   uv_mutex_unlock (&socks->close_mutex);
 
-  uvsocks_remove_tunnel (socks);
-
   if (socks->self_loop)
     {
+      uvsocks_send_async (socks, uvsocks_remove_tunnel, NULL, NULL);
       uv_thread_join (&socks->thread);
       uv_close ((uv_handle_t *) &socks->async, NULL);
       uvsocks_free_handle_real ((uv_handle_t *)&socks->async);
     }
+  else
+    uvsocks_remove_tunnel (socks, NULL);
 }
 
 static void
