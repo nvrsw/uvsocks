@@ -532,9 +532,6 @@ uvsocks_remove_tunnel (UvSocks *socks)
   int t;
   int s;
 
-  if (!socks->tunnels)
-    return;
-
   for (t = 0; t < socks->n_tunnels; t++)
     {
       if (socks->tunnels[t].listen_tcp)
@@ -577,11 +574,7 @@ static void
 uvsocks_set_status (UvSocksTunnel *tunnel,
                     UvSocksStatus  status)
 {
-  UvSocks *socks;
-
-  if (!tunnel)
-    return;
-  socks = tunnel->socks;
+  UvSocks *socks = tunnel->socks;
 
   if (socks->callback_func)
     socks->callback_func (socks,
