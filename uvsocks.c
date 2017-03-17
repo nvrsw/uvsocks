@@ -585,9 +585,9 @@ uvsocks_set_status (UvSocksTunnel *tunnel,
 
   if (socks->callback_func)
     socks->callback_func (socks,
-                            status,
-                            &tunnel->param,
-                            socks->callback_data);
+                          status,
+                          &tunnel->param,
+                          socks->callback_data);
 }
 
 static void
@@ -1012,7 +1012,6 @@ uvsocks_local_new_connection (uv_stream_t *stream,
 {
   UvSocksTunnel *tunnel = stream->data;
   UvSocks *socks = tunnel->socks;
-
   UvSocksSession *session;
 
   if (status == -1)
