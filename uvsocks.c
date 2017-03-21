@@ -1090,6 +1090,8 @@ uvsocks_start_local_server (UvSocks       *socks,
       return;
     }
 
+  tunnel->listen_tcp->data = tunnel;
+
   uv_ip4_addr (tunnel->param.listen_host, tunnel->param.listen_port, &addr);
   uv_tcp_init (socks->loop, tunnel->listen_tcp);
   r = uv_tcp_bind (tunnel->listen_tcp, (const struct sockaddr *) &addr, 0);
@@ -1098,8 +1100,6 @@ uvsocks_start_local_server (UvSocks       *socks,
       status = UVSOCKS_ERROR_TCP_BIND;
       goto fail;
     }
-
-  tunnel->listen_tcp->data = tunnel;
 
   {
     struct sockaddr_in name;
