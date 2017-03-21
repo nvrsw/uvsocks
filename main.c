@@ -88,6 +88,7 @@ main_handle_signals (uv_signal_t *handle,
 {
   fprintf (stderr, "main: signal[%d] received\n", signum);
 
+  uvsocks_free (main_uvsocks);
   uv_stop (main_loop);
 }
 
@@ -339,7 +340,6 @@ void
 main_exit (void)
 {
   main_cleanup ();
-  uvsocks_free (main_uvsocks);
 }
 
 int
