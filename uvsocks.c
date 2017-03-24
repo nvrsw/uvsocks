@@ -159,7 +159,6 @@ struct _UvSocks
 
   UvSocksStatusFunc      callback_func;
   void                  *callback_data;
-  uv_mutex_t             close_mutex;
   int                    close_cb_called;
   int                    close;
 };
@@ -313,8 +312,6 @@ uvsocks_new (void              *uv_loop,
   socks->callback_func = callback_func;
   socks->callback_data = callback_data;
 
-  uv_mutex_init (&socks->close_mutex);
-
   if (socks->self_loop)
     uv_thread_create (&socks->thread, uvsocks_thread_main, socks);
 
@@ -368,8 +365,6 @@ uvsocks_free_handle_real (uv_handle_t *handle)
       free (socks->loop);
     }
 
-  uv_mutex_destroy (&socks->close_mutex);
-
   free (socks->tunnels);
   free (socks);
 }
@@ -384,9 +379,7 @@ uvsocks_quit (UvSocks  *socks,
 static void
 uvsocks_free_check (UvSocks *socks)
 {
-  uv_mutex_lock (&socks->close_mutex);
   socks->close_cb_called--;
-  uv_mutex_unlock (&socks->close_mutex);
   if (socks->close_cb_called > 0)
     return;
 
@@ -522,9 +515,7 @@ uvsocks_remove_session (UvSocksTunnel  *tunnel,
   if (socks->read_tcp &&
       !uv_is_closing ((const uv_handle_t *)socks->read_tcp))
     {
-      uv_mutex_lock (&tunnel->socks->close_mutex);
       tunnel->socks->close_cb_called++;
-      uv_mutex_unlock (&tunnel->socks->close_mutex);
       uv_close ((uv_handle_t *) socks->read_tcp,
                 uvsocks_close_handle_link);
     }
@@ -533,9 +524,7 @@ uvsocks_remove_session (UvSocksTunnel  *tunnel,
   if (local->read_tcp &&
       !uv_is_closing ((const uv_handle_t *)local->read_tcp))
     {
-      uv_mutex_lock (&tunnel->socks->close_mutex);
       tunnel->socks->close_cb_called++;
-      uv_mutex_unlock (&tunnel->socks->close_mutex);
       uv_close ((uv_handle_t *) local->read_tcp,
                 uvsocks_close_handle_link);
     }
@@ -558,9 +547,7 @@ uvsocks_remove_tunnel (UvSocks  *socks,
     {
       if (socks->tunnels[t].listen_tcp)
         {
-          uv_mutex_lock (&socks->close_mutex);
           socks->close_cb_called++;
-          uv_mutex_unlock (&socks->close_mutex);
           uv_close ((uv_handle_t *) socks->tunnels[t].listen_tcp,
                     uvsocks_close_handle_listen);
         }
@@ -578,10 +565,8 @@ uvsocks_free (UvSocks *socks)
   if (!socks)
     return;
 
-  uv_mutex_lock (&socks->close_mutex);
   socks->close_cb_called = 0;
   socks->close = 1;
-  uv_mutex_unlock (&socks->close_mutex);
 
   if (socks->self_loop)
     {
