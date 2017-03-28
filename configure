@@ -68,7 +68,8 @@ ldflags = $
   -rdynamic
 
 libs = $
-  $libuv_libs
+  $libuv_libs $
+  -lbsd
 
 rule cc
   command = $cc -MMD -MT $out -MF $out.d $cflags -c -o $out $in
