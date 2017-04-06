@@ -910,10 +910,13 @@ uvsocks_read (uv_stream_t    *stream,
             if (link->read_buf_len < 10)
               break;
 
-            if (data[0] != 0x05 ||
-                data[1] != 0x00)
+            if (data[0] != 0x05 || data[1] != 0x00)
               {
-                uvsocks_set_status (tunnel, UVSOCKS_ERROR_SOCKS_COMMAND);
+                uint8_t *p = (uint8_t *) data;
+
+                uvsocks_set_status (tunnel,
+                                    UVSOCKS_ERROR_SOCKS_COMMAND +
+                                    ((p[0] << 8) | p[1]));
                 uvsocks_remove_session (tunnel, session);
                 return;
               }
@@ -1192,11 +1195,14 @@ uvsocks_get_status_string (UvSocksStatus status)
         return "socks error: handshake";
       case UVSOCKS_ERROR_SOCKS_AUTHENTICATION:;
         return "socks error: authentication";
-      case UVSOCKS_ERROR_SOCKS_COMMAND:
-        return "socks error: command";
       case UVSOCKS_ERROR_SOCKS_CMD_BIND:
         return "socks error: bind";
+      case UVSOCKS_ERROR_SOCKS_COMMAND:
+        return "socks error: command";
     }
+
+  if (status >= UVSOCKS_ERROR_SOCKS_COMMAND)
+    return "socks error: command";
 
   return "unknown error";
 }
