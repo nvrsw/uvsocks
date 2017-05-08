@@ -727,6 +727,9 @@ uvsocks_connect_real (UvSocksSessionLink *link,
 {
   uv_connect_t *connect;
 
+  if (!link->read_tcp)
+    return;
+
   connect = malloc (sizeof (*connect));
   if (!connect)
     {
