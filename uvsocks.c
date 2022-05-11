@@ -289,8 +289,8 @@ uvsocks_new (void              *uv_loop,
           params[i].listen_port > 65535)
         goto fail_parameter;
 
-      if (params[i].destination_host == NULL ||
-          params[i].listen_host == NULL)
+      if (params[i].destination_host[0] == '\0' ||
+          params[i].listen_host[0] == '\0')
         goto fail_parameter;
     }
 
