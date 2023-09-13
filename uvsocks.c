@@ -175,11 +175,10 @@ struct _UvSocksPacketReq
   UvSocksStage stage;
 };
 
-#ifndef strlcpy
 static size_t
-strlcpy (char       *dst,
-         const char *src,
-         size_t      size)
+uv_strlcpy (char *dst,
+            const char *src,
+            size_t size)
 {
   char *d = dst;
   const char *s = src;
@@ -202,7 +201,6 @@ strlcpy (char       *dst,
 
   return(s - src - 1); /* count does not include NUL */
 }
-#endif
 
 static void
 uvsocks_read (uv_stream_t    *stream,
@@ -324,10 +322,10 @@ uvsocks_new (void              *uv_loop,
       memcpy (&tunnels[i].param, &params[i], sizeof (UvSocksParam));
     }
 
-  strlcpy (socks->host, host, sizeof (socks->host));
+  uv_strlcpy (socks->host, host, sizeof (socks->host));
   socks->port = port;
-  strlcpy (socks->user, user, sizeof (socks->user));
-  strlcpy (socks->password, password, sizeof (socks->password));
+  uv_strlcpy (socks->user, user, sizeof (socks->user));
+  uv_strlcpy (socks->password, password, sizeof (socks->password));
 
   socks->n_tunnels = n_params;
   socks->tunnels = tunnels;
@@ -953,9 +951,9 @@ uvsocks_read (uv_stream_t    *stream,
                 memcpy (&port, &data[8], 2);
                 port = htons(port);
 
-                strlcpy (tunnel->param.listen_host,
-                         socks->host,
-                         sizeof (tunnel->param.listen_host));
+                uv_strlcpy (tunnel->param.listen_host,
+                            socks->host,
+                            sizeof (tunnel->param.listen_host));
                 tunnel->param.listen_port = port;
 
                 uvsocks_set_status (tunnel, UVSOCKS_OK_SOCKS_BIND);
